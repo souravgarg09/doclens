@@ -183,3 +183,16 @@ textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px #8b5cf61c; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* parse progress + per-stage timing report */
+.parse-progress { width: min(360px, 80%); height: 6px; margin: 14px auto 0; border-radius: 999px; background: #18233a; overflow: hidden; }
+.parse-progress span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent-2), var(--accent)); transition: width .6s ease; }
+.parse-report { position: relative; margin-left: auto; font-size: 11px; color: var(--muted); }
+.parse-report summary { cursor: pointer; list-style: none; padding: 3px 9px; border: 1px solid var(--border); border-radius: 999px; white-space: nowrap; }
+.parse-report summary::-webkit-details-marker { display: none; }
+.parse-report summary b { color: var(--text); }
+.parse-report[open] summary { border-color: var(--accent-2); }
+.parse-report ul { position: absolute; z-index: 5; right: 0; margin: 8px 0 0; padding: 12px 14px; width: 340px; list-style: none; display: grid; gap: 7px; border: 1px solid var(--border); border-radius: 12px; background: #0b1220f2; box-shadow: 0 18px 40px #0008; }
+.parse-report li { display: grid; grid-template-columns: 130px 1fr 52px; align-items: center; gap: 8px; }
+.parse-report li i { display: block; height: 6px; border-radius: 999px; background: linear-gradient(90deg, var(--accent-2), var(--accent)); }
+.parse-report li code { text-align: right; color: var(--text); }

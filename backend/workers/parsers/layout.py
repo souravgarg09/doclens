@@ -5,7 +5,7 @@ from huggingface_hub import hf_hub_download
 from PIL import Image
 
 from app.config import settings
-from app.device import DEVICE
+from app.device import DEVICE, USE_FP16
 
 # DocStructBench class names → DocLens region types
 CLASS_MAP = {
@@ -23,7 +23,7 @@ def _model():
 
 def detect_layout(img: Image.Image, conf: float = 0.25) -> list[dict]:
     W, H = img.size
-    res = _model().predict(img, imgsz=1024, conf=conf, device=str(DEVICE), verbose=False)[0]
+    res = _model().predict(img, imgsz=1024, conf=conf, device=str(DEVICE), half=USE_FP16, verbose=False)[0]
     names = res.names
     out = []
     for box, cls, score in zip(res.boxes.xyxy.tolist(), res.boxes.cls.tolist(), res.boxes.conf.tolist()):

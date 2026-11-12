@@ -76,7 +76,8 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "Could not create the backend environment." }
     }
     if ($uv) {
-        & $uv.Source pip install --python $pythonExe -r requirements.txt
+        # --torch-backend=auto installs the CUDA build of PyTorch when an NVIDIA GPU is present
+        & $uv.Source pip install --python $pythonExe --torch-backend=auto -r requirements.txt
     }
     else {
         & $pythonExe -m pip install --upgrade pip
@@ -84,6 +85,10 @@ try {
         & $pythonExe -m pip install -r requirements.txt
     }
     if ($LASTEXITCODE -ne 0) { throw "Backend dependency installation failed." }
+
+    Write-Host "Downloading the AI models once (about 2 GB; later runs reuse them)..." -ForegroundColor Cyan
+    & $pythonExe -m scripts.download_models
+    if ($LASTEXITCODE -ne 0) { throw "Model download failed. Check the internet connection and run setup again." }
 }
 finally {
     Pop-Location

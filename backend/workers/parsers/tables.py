@@ -12,7 +12,7 @@ from PIL import Image
 from transformers import AutoImageProcessor, TableTransformerForObjectDetection
 
 from app.config import settings
-from app.device import DEVICE
+from app.device import DEVICE, autocast
 from app.services.verifier import extract_numbers
 
 
@@ -27,7 +27,8 @@ def _model():
 def parse_table(crop: Image.Image, page: pymupdf.Page, bbox: list[float]) -> dict:
     proc, model = _model()
     inputs = proc(images=crop, return_tensors="pt").to(DEVICE)
-    outputs = model(**inputs)
+    with autocast():
+        outputs = model(**inputs)
     det = proc.post_process_object_detection(outputs, threshold=0.5, target_sizes=[crop.size[::-1]])[0]
     labels = model.config.id2label
     rows, cols = [], []

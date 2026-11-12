@@ -7,7 +7,7 @@ from PIL import Image
 from transformers import Pix2StructForConditionalGeneration, Pix2StructProcessor
 
 from app.config import settings
-from app.device import DEVICE
+from app.device import DEVICE, autocast
 from app.services.verifier import extract_numbers
 
 
@@ -32,7 +32,8 @@ def looks_like_chart(crop: Image.Image, caption_text: str) -> bool:
 def decode_chart(crop: Image.Image) -> dict:
     proc, model = _model()
     inputs = proc(images=crop.convert("RGB"), text="Generate underlying data table of the figure below:", return_tensors="pt").to(DEVICE)
-    out = model.generate(**inputs, max_new_tokens=512)
+    with autocast():
+        out = model.generate(**inputs, max_new_tokens=512)
     table_text = proc.decode(out[0], skip_special_tokens=True)
     return {"table_text": table_text, **_to_series(table_text)}
 

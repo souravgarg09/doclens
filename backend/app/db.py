@@ -25,6 +25,10 @@ class Document(Base):
     pages: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(20), default="queued")  # queued|parsing|ready|failed
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # live progress while parsing: {"stage": str, "page": int, "pages": int}
+    progress: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    # per-stage timings and counts recorded by the worker (seconds), used by the benchmark
+    parse_stats: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     regions: Mapped[list["Region"]] = relationship(back_populates="document", cascade="all, delete-orphan")
 
@@ -66,9 +70,19 @@ class Query(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+# create_all never alters existing tables, so columns added after the first release
+# are applied here. Each statement is idempotent.
+_MIGRATIONS = (
+    "ALTER TABLE documents ADD COLUMN IF NOT EXISTS progress JSON",
+    "ALTER TABLE documents ADD COLUMN IF NOT EXISTS parse_stats JSON",
+)
+
+
 async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        for statement in _MIGRATIONS:
+            await conn.exec_driver_sql(statement)
 
 
 async def get_session() -> AsyncIterator[AsyncSession]:

@@ -1,5 +1,5 @@
-"""Region relevance re-ranker: fuses SigLIP similarity with a Gemini listwise
-relevance score (0-10) and light structural priors. Output is sorted, with a
+"""Region relevance re-ranker: fuses SigLIP similarity, BM25 keyword overlap and
+light structural priors with an optional Gemini listwise relevance score (0-10). Output is sorted, with a
 `grounding` score in [0,1] used by the refusal guardrail."""
 from typing import Any
 
@@ -23,6 +23,7 @@ def rerank(question: str, candidates: list[dict[str, Any]]) -> tuple[list[dict[s
         return [], 0.0, "no candidates"
     intent = _intent(question)
     scored = [dict(candidate) for candidate in candidates]
+    top_lexical = max((float(c.get("lexical") or 0.0) for c in scored), default=0.0)
     for c in scored:
         # Qdrant cosine scores are already comparable in [-1, 1]. Do not divide
         # by the best hit: that made an irrelevant best hit look perfectly grounded.
@@ -32,10 +33,13 @@ def rerank(question: str, candidates: list[dict[str, Any]]) -> tuple[list[dict[s
         has_struct = bool((c.get("structured") or {}).get("cells") or (c.get("structured") or {}).get("series") or (c.get("structured") or {}).get("latex"))
         if intent["wants_number"] and has_struct:
             s += 0.05
+        if top_lexical > 0:
+            # exact keyword overlap (BM25), relative to the best keyword match in this candidate set
+            s += 0.15 * float(c.get("lexical") or 0.0) / top_lexical
         c["_prior"] = min(1.0, s)
 
-    used = "SigLIP+priors"
-    if settings.gemini_api_key:
+    used = "hybrid SigLIP+BM25 priors"
+    if settings.gemini_api_key and settings.gemini_rerank:
         try:
             listing = "\n\n".join(f"[{c['region_id']}] ({c['type']}, page {c['page']})\n{(c.get('content') or '')[:900]}" for c in scored)
             raw = gemini.generate([f"Question: {question}\n\nScore each region 0-10 for how directly it answers the question. Return JSON {{\"scores\": {{\"<id>\": <0-10>}}}}.\n\n{listing}"])
@@ -45,9 +49,9 @@ def rerank(question: str, candidates: list[dict[str, Any]]) -> tuple[list[dict[s
                 if value is not None:
                     g = max(0.0, min(10.0, float(value))) / 10
                     c["_prior"] = 0.45 * c["_prior"] + 0.55 * g
-            used = "SigLIP+Gemini listwise"
+            used = "hybrid SigLIP+BM25 + Gemini listwise"
         except Exception as e:  # noqa: BLE001
-            used = f"SigLIP+priors (gemini rerank failed: {e})"
+            used = f"hybrid SigLIP+BM25 priors (gemini rerank failed: {e})"
     ranked = sorted(scored, key=lambda c: c["_prior"], reverse=True)
     for c in ranked:
         c["rerank_score"] = round(c.pop("_prior"), 4)

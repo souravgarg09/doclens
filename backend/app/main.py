@@ -13,7 +13,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,8 +21,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .agents.graph import run_agent
 from .config import PROJECT_DIR, settings
 from .db import Document, Query, Region, get_session, init_db
-from .device import DEVICE
-from .queue import enqueue_parse
+from .device import DEVICE, describe as describe_device
+from .queue import enqueue_parse, get_worker_status
 
 log = logging.getLogger("doclens.api")
 
@@ -33,13 +33,29 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="DocLens API", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="DocLens API", version="0.3.0", lifespan=lifespan)
+_ALLOWED_ORIGINS = {origin.strip().rstrip("/") for origin in settings.cors_origins.split(",") if origin.strip()}
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()],
+    allow_origins=sorted(_ALLOWED_ORIGINS),
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Content-Type"],
 )
+
+
+@app.middleware("http")
+async def reject_cross_site_writes(request, call_next):
+    """CSRF guard: a browser always sends Origin on cross-site POST/DELETE requests.
+
+    Requests without an Origin header (curl, the benchmark script) are allowed; a
+    request from any web page other than the DocLens frontend is refused, so a
+    malicious site open in the same browser cannot upload or delete documents.
+    """
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        origin = request.headers.get("origin")
+        if origin and origin.rstrip("/") not in _ALLOWED_ORIGINS:
+            return JSONResponse({"detail": "cross-site request refused"}, status_code=403)
+    return await call_next(request)
 
 
 class AskRequest(BaseModel):
@@ -49,13 +65,16 @@ class AskRequest(BaseModel):
 
 def _doc(d: Document) -> dict:
     return {"id": d.id, "title": d.title, "filename": d.filename, "pages": d.pages, "status": d.status, "error": d.error,
-            "created_at": d.created_at.isoformat() if d.created_at else None}
+            "created_at": d.created_at.isoformat() if d.created_at else None,
+            "progress": d.progress, "parse_stats": d.parse_stats}
 
 
 @app.get("/api/health")
 async def health():
     return {"ok": True, "gemini": bool(settings.gemini_api_key), "model": settings.gemini_model,
-            "fallback_model": settings.gemini_fallback_model, "device": DEVICE.type}
+            "fallback_model": settings.gemini_fallback_model, "device": DEVICE.type,
+            "device_detail": describe_device(), "gemini_rerank": settings.gemini_rerank,
+            "worker": await get_worker_status()}
 
 
 @app.post("/api/documents", status_code=201)

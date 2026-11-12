@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, type Answer, type Citation, type Doc, type Health, type Region } from "./api";
+import { api, type Answer, type Citation, type Doc, type Health, type ParseStats, type Region } from "./api";
 import { CitationOverlay, TYPE_COLORS } from "./components/CitationOverlay";
 
 type BusyState = "upload" | "ask" | "document" | "history" | null;
@@ -39,9 +39,21 @@ export default function App() {
   };
 
   useEffect(() => {
-    api.health().then(setHealth).catch(() => setHealth(null));
     refreshDocs().then((list) => list[0] && setSel(list[0].id)).catch((ex: Error) => setErr(ex.message));
   }, []);
+
+  // Health includes the worker heartbeat (loading models / idle / parsing / offline).
+  // Poll quickly while the worker is busy or starting, slowly otherwise.
+  const workerState = health?.worker?.state;
+  const backendDown = health === null;
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => api.health().then((h) => { if (!cancelled) setHealth(h); }).catch(() => { if (!cancelled) setHealth(null); });
+    void load();
+    const fast = backendDown || workerState === "loading" || workerState === "parsing" || workerState === "offline";
+    const timer = window.setInterval(load, fast ? 2000 : 10000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [workerState, backendDown]);
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
@@ -75,10 +87,11 @@ export default function App() {
         const list = await refreshDocs();
         const latest = list.find((item) => item.id === sel);
         if (latest && latest.status !== doc?.status) await loadDoc(latest.id);
+        else if (latest) setDoc((current) => (current && current.id === latest.id ? { ...current, ...latest } : current));
       } catch (ex) {
         setErr((ex as Error).message);
       }
-    }, 2500);
+    }, 1500);
     return () => window.clearInterval(timer);
   }, [docs, sel, doc?.status]);
 
@@ -198,10 +211,7 @@ export default function App() {
     <div className="layout">
       <aside className="panel sidebar">
         <div className="brand"><span className="logo">D</span><div><h1>DocLens</h1><small>Grounded intelligence for visual PDFs</small></div></div>
-        <div className={`health ${health?.gemini ? "ok" : "warn"}`}>
-          <span className="health-dot" />
-          <div><b>{health ? (health.gemini ? "AI services online" : "Gemini key missing") : "Backend offline"}</b>{health && <small>{health.model}{health.fallback_model ? ` · fallback ${health.fallback_model}` : ""} · {health.device.toUpperCase()}</small>}</div>
-        </div>
+        <HealthBadge health={health} />
 
         <form onSubmit={upload} className="upload">
           <div><b>Add a PDF</b><small>Up to 25 MB · born-digital works best</small></div>
@@ -213,7 +223,7 @@ export default function App() {
         <ul className="docs">
           {docs.map((item) => (
             <li key={item.id} className={item.id === sel ? "active" : ""} onClick={() => setSel(item.id)}>
-              <div className="doc-copy"><b title={item.title}>{item.title}</b><small><i className={`dot ${item.status}`} /> {item.status}{item.pages ? ` · ${item.pages} pages` : ""}</small></div>
+              <div className="doc-copy"><b title={item.title}>{item.title}</b><small><i className={`dot ${item.status}`} /> {item.status === "parsing" && item.progress?.pages ? `parsing ${progressPercent(item)}%` : item.status}{item.pages ? ` · ${item.pages} pages` : ""}{item.status === "ready" && item.parse_stats ? ` · ${formatSeconds(item.parse_stats.total_seconds)}` : ""}</small></div>
               <div className="doc-actions">
                 {item.status === "failed" && <button className="icon-button" title="Retry parsing" aria-label={`Retry parsing ${item.title}`} disabled={busy !== null} onClick={(event) => { event.stopPropagation(); void reparseDocument(item); }}>↻</button>}
                 <button className="icon-button danger" title="Delete document" aria-label={`Delete ${item.title}`} disabled={busy !== null || item.status === "parsing"} onClick={(event) => { event.stopPropagation(); void deleteDocument(item); }}>×</button>
@@ -234,13 +244,13 @@ export default function App() {
               <label className="toggle"><input type="checkbox" checked={showAll} onChange={(event) => setShowAll(event.target.checked)} /> show regions</label>
               <button className="secondary" disabled={!highlighted.length} onClick={() => { setHighlighted([]); setSelectedRegion(null); }}>Clear highlight</button>
             </div>
-            <div className="stats">{Object.entries(stats).map(([type, count]) => <span key={type} style={{ borderColor: TYPE_COLORS[type], color: TYPE_COLORS[type] }}>{type} {count}</span>)}{doc.status !== "ready" && <em>{doc.status === "failed" ? doc.error : "Parsing document…"}</em>}</div>
+            <div className="stats">{Object.entries(stats).map(([type, count]) => <span key={type} style={{ borderColor: TYPE_COLORS[type], color: TYPE_COLORS[type] }}>{type} {count}</span>)}{doc.status !== "ready" && <em>{doc.status === "failed" ? doc.error : "Parsing document…"}</em>}{doc.status === "ready" && doc.parse_stats && <ParseReport stats={doc.parse_stats} />}</div>
             {doc.status === "ready" ? <CitationOverlay src={api.pageUrl(doc.id, page)} regions={regions.filter((region) => region.page === page)} highlighted={highlighted} showAll={showAll} onSelect={(region) => { setSelectedRegion(region); setHighlighted([region.id]); }} /> : (
-              <div className={`empty-state ${doc.status}`}><span className="empty-icon">{doc.status === "failed" ? "!" : "↻"}</span><h3>{doc.status === "failed" ? "Parsing failed" : "Building the region index"}</h3><p>{doc.status === "failed" ? doc.error : "The worker is detecting text, tables, charts, and equations."}</p>{doc.status === "failed" && <button className="primary" disabled={busy !== null} onClick={() => void reparseDocument(doc)}>Retry parsing</button>}</div>
+              <div className={`empty-state ${doc.status}`}><span className="empty-icon">{doc.status === "failed" ? "!" : "↻"}</span><h3>{doc.status === "failed" ? "Parsing failed" : "Building the region index"}</h3><p>{doc.status === "failed" ? doc.error : parsingMessage(doc, health)}</p>{doc.status !== "failed" && <div className="parse-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPercent(doc)}><span style={{ width: `${Math.max(4, progressPercent(doc))}%` }} /></div>}{doc.status === "failed" && <button className="primary" disabled={busy !== null} onClick={() => void reparseDocument(doc)}>Retry parsing</button>}</div>
             )}
             {selectedRegion && <div className="card region-detail"><div className="row"><b style={{ color: TYPE_COLORS[selectedRegion.type] }}>R{selectedRegion.id} · {selectedRegion.type}</b><small>page {selectedRegion.page}</small><button className="icon-button" aria-label="Close region details" onClick={() => setSelectedRegion(null)}>×</button></div><pre>{selectedRegion.content || "No extracted text for this visual region."}</pre>{selectedRegion.structured && <details><summary>Structured extraction</summary><pre className="dim">{JSON.stringify(selectedRegion.structured, null, 2).slice(0, 3000)}</pre></details>}</div>}
           </>
-        ) : <div className="empty-state welcome"><span className="empty-icon">F</span><h2>Explore evidence, not guesses</h2><p>Upload a PDF to detect its visual regions, ask questions, and jump directly to cited evidence.</p></div>}
+        ) : <div className="empty-state welcome"><span className="empty-icon">D</span><h2>Explore evidence, not guesses</h2><p>Upload a PDF to detect its visual regions, ask questions, and jump directly to cited evidence.</p></div>}
       </main>
 
       <aside className="panel answer-panel">
@@ -311,4 +321,66 @@ function answerLabel(answer: Answer) {
   if (answer.status === "flagged") return answer.verification?.status === "citation_gap" ? "Citation gap" : "Needs review";
   if (answer.verification?.status === "consistent") return "Verified";
   return "Answered";
+}
+
+function HealthBadge({ health }: { health: Health | null }) {
+  const worker = health?.worker;
+  let tone = "warn";
+  let title = "Backend offline";
+  let detail = "Start DocLens with START_DOCLENS.cmd or ./start.sh";
+  if (health) {
+    detail = `${health.device_detail ?? health.device.toUpperCase()} · ${health.model}${health.fallback_model ? ` → ${health.fallback_model}` : ""}`;
+    if (!health.gemini) title = "Gemini key missing";
+    else if (!worker || worker.state === "offline" || worker.state === "unreachable") title = "Parsing worker offline";
+    else if (worker.state === "loading") title = "Loading AI models…";
+    else if (worker.state === "parsing") { tone = "ok"; title = worker.pages ? `Parsing page ${worker.page} of ${worker.pages}` : "Parsing a document"; }
+    else { tone = "ok"; title = "Ready"; }
+    if (worker?.state === "loading" && worker.detail) detail = `${worker.detail} · ${detail}`;
+  }
+  return (
+    <div className={`health ${tone}`} role="status">
+      <span className="health-dot" />
+      <div><b>{title}</b><small>{detail}</small></div>
+    </div>
+  );
+}
+
+const STAGE_LABELS: Record<string, string> = {
+  render: "Render pages", index_setup: "Index setup", layout: "Layout detection", text: "Text extraction", tables: "Table structure",
+  charts: "Chart decoding", equations: "Equation OCR", embeddings: "Embeddings", vector_upsert: "Vector index",
+};
+
+function ParseReport({ stats }: { stats: ParseStats }) {
+  const entries = Object.entries(stats.stages).filter(([, seconds]) => seconds >= 0.005).sort((a, b) => b[1] - a[1]);
+  const max = Math.max(...entries.map(([, seconds]) => seconds), 0.001);
+  return (
+    <details className="parse-report">
+      <summary>Parsed in <b>{formatSeconds(stats.total_seconds)}</b> · {formatSeconds(stats.seconds_per_page)}/page · {stats.device}</summary>
+      <ul>{entries.map(([stage, seconds]) => (
+        <li key={stage}><span>{STAGE_LABELS[stage] ?? stage}{(stats.counts[stage] ?? 0) > 1 ? ` ×${stats.counts[stage]}` : ""}</span><i style={{ width: `${(seconds / max) * 100}%` }} /><code>{formatSeconds(seconds)}</code></li>
+      ))}</ul>
+    </details>
+  );
+}
+
+function progressPercent(item: Doc) {
+  const progress = item.progress;
+  if (!progress || !progress.pages) return item.status === "ready" ? 100 : 0;
+  if (progress.stage === "indexing") return 97;
+  return Math.min(95, Math.round(((progress.page - 1) / progress.pages) * 95));
+}
+
+function parsingMessage(item: Doc, health: Health | null) {
+  if (health?.worker?.state === "loading") return "The worker is still loading its AI models; parsing starts as soon as they are ready.";
+  if (health && (!health.worker || health.worker.state === "offline")) return "The parsing worker is not running. Restart DocLens to process this document.";
+  const progress = item.progress;
+  if (!progress || item.status === "queued") return "Waiting for the parsing worker…";
+  if (progress.stage === "rendering") return "Rendering pages…";
+  if (progress.stage === "indexing") return "Writing the vector index…";
+  return `Detecting text, tables, charts and equations · page ${progress.page} of ${progress.pages}`;
+}
+
+function formatSeconds(seconds: number) {
+  if (seconds >= 60) return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
+  return seconds >= 10 ? `${seconds.toFixed(0)}s` : `${seconds.toFixed(seconds >= 1 ? 1 : 2)}s`;
 }

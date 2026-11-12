@@ -126,7 +126,10 @@ async def retrieve_node(state: AgentState) -> AgentState:
     t0 = time.time()
     async with SessionLocal() as s:
         cands = await retrieve_regions(s, state["document_id"], state["question"])
-    return {"candidates": cands, "trace": _t(state, "retrieve", f"SigLIP→Qdrant returned {len(cands)} candidates", t0)}
+    keyword_hits = sum(1 for c in cands if c.get("lexical"))
+    return {"candidates": cands, "trace": _t(state, "retrieve",
+                                             f"hybrid SigLIP+BM25 returned {len(cands)} candidates "
+                                             f"({keyword_hits} with keyword matches)", t0)}
 
 
 async def rerank_node(state: AgentState) -> AgentState:

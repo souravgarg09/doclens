@@ -32,13 +32,13 @@ class Settings(BaseSettings):
 
     # Database and queues
     database_url: str = (
-        "postgresql+asyncpg://postgres:postgres@localhost:5432/figuremind"
+        "postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/figuremind"
     )
-    redis_url: str = "redis://localhost:6379/0"
+    redis_url: str = "redis://127.0.0.1:6379/0"
     parse_queue: str = "figuremind:parse"
 
     # Vector database
-    qdrant_url: str = "http://localhost:6333"
+    qdrant_url: str = "http://127.0.0.1:6333"
     qdrant_collection: str = "figuremind_regions"
 
     # Gemini
@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     # Device
     # auto prefers CUDA, then Apple MPS, then CPU.
     torch_device: str = "auto"
+    # float16 autocast for the encoders when running on an NVIDIA GPU
+    cuda_fp16: bool = True
+    # load every model when the worker starts, so the first upload is not slowed by model loading
+    preload_models: bool = True
 
     # AI models
     layout_repo: str = "juliozhao/DocLayout-YOLO-DocStructBench"
@@ -71,11 +75,15 @@ class Settings(BaseSettings):
     top_k_retrieve: int = 20
     top_k_context: int = 6
     max_verify_attempts: int = 2
+    # hybrid retrieval: weight of the lexical (BM25) ranking fused with SigLIP vectors
+    lexical_weight: float = 1.0
+    # ask Gemini to score the retrieved regions before answering (one extra API call per question)
+    gemini_rerank: bool = True
 
     # API
     api_host: str = "0.0.0.0"
     api_port: int = 8000
-    cors_origins: str = "http://localhost:5173"
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     max_upload_mb: int = 25
 
     def resolve_project_path(self, value: str | Path) -> Path:

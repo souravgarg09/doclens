@@ -11,7 +11,7 @@ from PIL import Image
 from transformers import AutoModel, AutoProcessor
 
 from ..config import settings
-from ..device import DEVICE
+from ..device import DEVICE, autocast
 
 
 @lru_cache(maxsize=1)
@@ -26,7 +26,8 @@ def embed_text(texts: list[str]) -> torch.Tensor:
     proc, model = _load()
     # SigLIP was trained with padding="max_length" (64 tokens)
     inputs = proc(text=[t[:400] for t in texts], padding="max_length", truncation=True, max_length=64, return_tensors="pt").to(DEVICE)
-    feats = model.get_text_features(**inputs)
+    with autocast():
+        feats = model.get_text_features(**inputs)
     return torch.nn.functional.normalize(feats.float(), dim=-1).cpu()
 
 
@@ -34,7 +35,8 @@ def embed_text(texts: list[str]) -> torch.Tensor:
 def embed_images(images: list[Image.Image]) -> torch.Tensor:
     proc, model = _load()
     inputs = proc(images=[im.convert("RGB") for im in images], return_tensors="pt").to(DEVICE)
-    feats = model.get_image_features(**inputs)
+    with autocast():
+        feats = model.get_image_features(**inputs)
     return torch.nn.functional.normalize(feats.float(), dim=-1).cpu()
 
 

@@ -107,7 +107,7 @@ if (-not ((Test-TcpPort 5432) -and (Test-TcpPort 6379) -and (Test-TcpPort 6333))
     throw "Docker services did not become ready. Open Docker Desktop, start the DocLens containers, and try again."
 }
 
-Write-Host "Starting API, parsing worker, and frontend..." -ForegroundColor Cyan
+Write-Host "Starting API, parsing worker, and frontend (the first start after boot can take a minute)..." -ForegroundColor Cyan
 $api = Start-Process -FilePath $pythonExe -WorkingDirectory $backendDir -WindowStyle Hidden -PassThru `
     -ArgumentList @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000") `
     -RedirectStandardOutput (Join-Path $logDir "api.out.log") `
@@ -129,7 +129,7 @@ $frontend = Start-Process -FilePath $npm.Source -WorkingDirectory $frontendDir -
 } | ConvertTo-Json | Set-Content -LiteralPath $pidFile -Encoding utf8
 
 try {
-    if (-not (Wait-HttpEndpoint "http://127.0.0.1:8000/api/health" 60)) {
+    if (-not (Wait-HttpEndpoint "http://127.0.0.1:8000/api/health" 180)) {
         throw "The API did not become ready. See .runtime\logs\api.err.log."
     }
     if (-not (Wait-HttpEndpoint "http://127.0.0.1:5173/" 30)) {
@@ -142,6 +142,7 @@ catch {
 }
 
 Write-Host "DocLens is ready: http://127.0.0.1:5173/" -ForegroundColor Green
+Write-Host "The worker loads its AI models in the background; the page shows when it is ready."
 Write-Host "Logs: $logDir"
 Write-Host "Stop everything later with: .\stop.ps1"
 if (-not $NoBrowser) {

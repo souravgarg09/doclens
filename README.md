@@ -1,226 +1,167 @@
 # DocLens
 
-DocLens is a multimodal document question-answering system for quantitative information in charts and tables within born-digital PDF documents. It parses each page into typed regions, retrieves evidence for a question, asks a multimodal reasoner to answer only from that evidence, displays region-grounded citations, and checks numeric claims against extracted values.
+DocLens answers questions about born-digital PDF documents — research papers, reports — with
+**evidence you can click**. It splits every page into typed regions (text, tables, charts,
+equations), finds the regions relevant to a question, asks Gemini to answer *only* from those
+regions, highlights the cited regions on the page, and re-checks the numbers in the answer
+against the values extracted from the PDF.
 
-The active application has one backend, one worker, and one frontend:
+B.Tech CSE major project, Amity University Punjab — Vidushi Chauhan, Anmol Sharma, Sourav Garg ·
+supervisor Dr. Vishwanath Bijalwan.
 
 ```text
-PDF upload
-  -> FastAPI stores the file and queues a Redis job
-  -> parsing worker renders pages and detects regions
-  -> table/chart/equation specialists extract structured evidence
-  -> SigLIP embeddings are stored in Qdrant; metadata is stored in PostgreSQL
-  -> LangGraph retrieves, re-ranks, grounds, answers, and verifies
-  -> React displays the answer and highlights cited page regions
+PDF upload ─▶ FastAPI stores it and queues a Redis job
+            ─▶ parsing worker (all local, no cloud calls):
+                 PyMuPDF render ─▶ DocLayout-YOLO regions
+                   ├─ tables   ─▶ Table Transformer ─▶ typed cells
+                   ├─ charts   ─▶ DePlot            ─▶ data series
+                   └─ text     ─▶ PDF text layer
+                 SigLIP embeddings ─▶ Qdrant · rows ─▶ PostgreSQL
+Question   ─▶ LangGraph agent:
+                 hybrid retrieval (SigLIP vectors + BM25 keywords)
+               ─▶ rerank (priors + optional Gemini listwise)
+               ─▶ context expansion (named tables/figures)
+               ─▶ grounding guardrail ─▶ Gemini answer with [R id] citations
+               ─▶ numeric verifier ─▶ one repair pass if a claim is unsupported
 ```
 
-## Repository structure
+Gemini is used **only** at question time. Parsing never calls a cloud model.
+
+## Folder layout
 
 ```text
 DocLens/
-|-- backend/
-|   |-- app/                 FastAPI, database models, agent, and services
-|   |-- workers/             Redis parsing worker and specialist parsers
-|   |-- tests/               lightweight verifier regression tests
-|   `-- requirements.txt
-|-- frontend/                Vite, React, and TypeScript interface
-|-- samples/                 demonstration input only
-|-- .env.example             safe configuration template
-|-- docker-compose.yml       PostgreSQL, Redis, and Qdrant
-|-- SETUP_DOCLENS.cmd     one-time Windows setup
-|-- START_DOCLENS.cmd     normal Windows launcher
-|-- STOP_DOCLENS.cmd      normal Windows shutdown
-`-- README.md
+├── backend/
+│   ├── app/            FastAPI API, database models, LangGraph agent, services
+│   ├── workers/        Redis parsing worker and the table/chart/layout parsers
+│   ├── scripts/        download_models.py, benchmark.py
+│   └── tests/          unit tests (verifier, embeddings, BM25, security guards)
+├── frontend/           React + Vite + TypeScript interface
+├── samples/            demonstration PDF
+├── benchmarks/         benchmark reports (one .md + .json per run)
+├── Documents/          midterm report/synopsis and university formats
+├── docker-compose.yml  PostgreSQL, Redis, Qdrant (bound to this computer only)
+├── SETUP_DOCLENS.cmd · START_DOCLENS.cmd · STOP_DOCLENS.cmd     Windows
+└── setup.sh · start.sh · stop.sh                                macOS / Linux
 ```
 
-Generated uploads, rendered pages, crops, virtual environments, dependencies, and secrets are excluded from source control.
+## Requirements
 
-## Prerequisites
+- Docker Desktop (running)
+- Node.js 20.19 or newer
+- [uv](https://docs.astral.sh/uv/) — setup installs it on macOS/Linux; on Windows `winget install astral-sh.uv`
+- A Gemini API key from <https://aistudio.google.com/apikey>
+- 16 GB RAM recommended; about 6 GB of disk for packages and models
+- An NVIDIA GPU (Windows/Linux) or Apple Silicon (Mac) is used automatically; CPU works but parses slower
 
-- `uv` 0.12 or later, or an existing Python 3.12 installation
-- Node.js 20.19 or later
-- Docker Desktop with Compose
-- At least 16 GB RAM; the ML models require several gigabytes of disk space
-- A Gemini API key for the question-answering endpoint
+## First-time setup (once per computer)
 
-The worker selects CUDA first, then Apple MPS, then CPU when `TORCH_DEVICE=auto`. CPU works but parsing is considerably slower.
+| Windows | macOS / Linux |
+|---|---|
+| Double-click `SETUP_DOCLENS.cmd` | `chmod +x *.sh && ./setup.sh` |
 
-## First-time setup
+Setup creates `.env` (and asks for your Gemini key), creates the Python 3.12 environment inside
+`backend/.venv`, installs the right PyTorch build for the machine (CUDA for NVIDIA, MPS for
+Apple Silicon, CPU otherwise), installs the frontend, and **downloads all AI models once**
+(about 2 GB) so the first document is not slowed down by downloads.
 
-Run all commands from this `DocLens` directory unless a step says otherwise.
+Do not copy `backend/.venv` between computers or operating systems — run setup on each machine.
 
-### Windows: one-time setup
+## Every run
 
-After extracting or cloning DocLens, double-click `SETUP_DOCLENS.cmd`. It checks the prerequisites, creates a project-specific Python 3.12 environment using `uv` when available or global Python 3.12 as a fallback, installs the backend and frontend dependencies, creates `.env`, and opens it so you can add your own Gemini API key. It does not install Python packages globally.
+| | Windows | macOS / Linux |
+|---|---|---|
+| Start | double-click `START_DOCLENS.cmd` | `./start.sh` |
+| Stop  | double-click `STOP_DOCLENS.cmd`  | `./stop.sh` |
 
-When setup reports success, use `START_DOCLENS.cmd` for every normal run. The first setup and first document parse require an internet connection and can take several minutes because dependencies and machine-learning model weights must be downloaded.
+Start launches Docker (if needed), the databases, the API, the parsing worker and the frontend in
+the background, then opens <http://127.0.0.1:5173/>. The badge at the top left shows the state:
+**Loading AI models…** for the first ~10–40 seconds after start, then **Ready**, and
+**Parsing page X of Y** while a document is processed. Stop keeps all documents and answers.
 
-### Manual setup (all platforms)
+Logs are in `.runtime/logs/`.
 
-1. Create the environment file.
+## Using it
 
-   Windows PowerShell:
+1. Upload a PDF. A progress bar shows the page being analysed.
+2. When it is ready, click **Parsed in …** above the page to see how long each stage took.
+3. Ask a question (Enter). The answer cites regions like `R81`; click a citation to jump to and
+   highlight that region on the page.
+4. Read the verification line: `consistent` means every number in the answer matched an
+   extracted value; `unverifiable`, `contradiction` and `citation_gap` need a human look.
+   `Show processing trace` lists every agent step with its time.
 
-   ```powershell
-   Copy-Item .env.example .env
-   ```
+## Measuring performance (benchmark)
 
-   macOS or Linux:
-
-   ```bash
-   cp .env.example .env
-   ```
-
-   Open `.env`, set `GEMINI_API_KEY`, and confirm `GEMINI_MODEL`. Never commit `.env`.
-
-2. Start PostgreSQL, Redis, and Qdrant.
-
-   ```bash
-   docker compose up -d
-   docker compose ps
-   ```
-
-3. Create the backend environment and install dependencies.
-
-   Windows PowerShell:
-
-   ```powershell
-   Set-Location backend
-   uv venv .venv --python 3.12
-   .\.venv\Scripts\Activate.ps1
-   uv pip install -r requirements.txt
-   ```
-
-   macOS or Linux:
-
-   ```bash
-   cd backend
-   uv venv .venv --python 3.12
-   source .venv/bin/activate
-   uv pip install -r requirements.txt
-   ```
-
-4. Install frontend dependencies.
-
-   ```bash
-   cd frontend
-   npm ci
-   ```
-
-The first parse downloads the configured Hugging Face model weights. Keep the demonstration machine online during the first run and complete this download before presenting the application.
-
-## Run the application
-
-### Windows: every normal run
-
-No reinstall or environment activation is needed after the first-time setup.
-
-1. Open the `DocLens` folder in File Explorer and double-click `START_DOCLENS.cmd`.
-
-   That is the normal startup method. It starts Docker Desktop when necessary, then starts the database services, API, parsing worker, and frontend in the background. It waits for them to become ready and opens the browser. Runtime logs are stored under `.runtime\logs\`.
-
-   Alternatively, right-click inside the folder, choose **Open in Terminal**, and run:
-
-   ```powershell
-   .\start.ps1
-   ```
-
-2. When finished, double-click `STOP_DOCLENS.cmd`. The terminal equivalent is:
-
-   ```powershell
-   .\stop.ps1
-   ```
-
-`stop.ps1` stops the application and Docker containers but preserves documents, database records, and vectors. Use `.\stop.ps1 -KeepInfrastructure` if another local project still needs the Docker services.
-
-To inspect or edit the project in VS Code, run `code .`; the editor does not need to remain open for DocLens to run. The launcher terminal and browser may also be closed after startup because the services run in the background. Existing successfully parsed documents remain available.
-
-For troubleshooting, inspect `.runtime\logs\api.err.log`, `worker.err.log`, or `frontend.err.log`. Do not run `docker compose down -v` unless you intentionally want to erase stored database and vector data.
-
-### Parsing performance
-
-The worker loads each machine-learning model once and reuses it. Region embeddings are processed in page-sized batches, and region IDs are allocated with one database flush per page instead of one flush per region. This removes repeated SigLIP and database overhead without changing the parser's output format or retrieval behaviour.
-
-`EMBEDDING_BATCH_SIZE=16` is a conservative default for CPU operation. A larger value can be faster on a dedicated GPU but uses more memory. `TORCH_DEVICE=auto` automatically selects CUDA, Apple MPS, or CPU. The first-ever parse remains slower because model weights may need to be downloaded and loaded into memory; later documents in the same worker session avoid that startup cost.
-
-### macOS or Linux
-
-Use three terminals.
-
-Terminal 1 - API, from `backend/` with the virtual environment active:
+With DocLens running, from `backend/`:
 
 ```bash
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+# Windows
+.\.venv\Scripts\python.exe -m scripts.benchmark
+# macOS / Linux
+.venv/bin/python -m scripts.benchmark
 ```
 
-Terminal 2 - parsing worker, from `backend/` with the same environment active:
+It uploads the sample PDF three times, asks three questions per run, and writes
+`benchmarks/<date>_<computer>.md` and `.json` with the machine, the device (CUDA/MPS/CPU),
+upload-to-ready time, per-stage parse timings, per-step question timings and any Gemini quota
+errors. Use `--no-questions` to measure parsing without spending Gemini quota, `--runs N` for
+more repetitions, `--pdf` and `-q "question"` for other inputs.
+
+To compare two laptops fairly, run the benchmark on each one after setup has finished (models
+downloaded) and DocLens has started (models loaded). Setup time, model download and model
+loading are deliberately kept out of the parse numbers and reported separately.
+
+BENCHMARK_RESULTS_PLACEHOLDER
+
+## Configuration (`.env`)
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `GEMINI_API_KEY` | — | required for questions |
+| `GEMINI_MODEL` / `GEMINI_FALLBACK_MODEL` | `gemini-3.8-flash` / `gemini-3.5-flash-lite` | fallback is used when the main model is rate-limited (HTTP 429) |
+| `GEMINI_RERANK` | `true` | one extra Gemini call per question to score retrieved regions; `false` halves Gemini usage |
+| `TORCH_DEVICE` | `auto` | `auto` = CUDA → Apple MPS → CPU; force with `cuda`, `mps`, `cpu` |
+| `CUDA_FP16` | `true` | half-precision inference on NVIDIA GPUs |
+| `PRELOAD_MODELS` | `true` | load models when the worker starts instead of on the first upload |
+| `LEXICAL_WEIGHT` | `1.0` | weight of BM25 keyword ranking in hybrid retrieval (0 = vectors only) |
+| `TOP_K_RETRIEVE` / `TOP_K_CONTEXT` | `20` / `6` | candidates retrieved / regions sent to Gemini |
+| `GROUNDING_THRESHOLD` | `0.35` | below this the agent refuses instead of guessing |
+| `RENDER_DPI` | `144` | page render resolution |
+
+## Checks
+
+From `backend/` (use `.venv/bin/python` on macOS/Linux):
 
 ```bash
-python -m workers.parse_worker
-```
-
-Terminal 3 - frontend, from `frontend/`:
-
-```bash
-npm run dev -- --host 127.0.0.1
-```
-
-Open `http://127.0.0.1:5173/`. The API health endpoint is `http://127.0.0.1:8000/api/health`.
-
-The configured storage directory is resolved from the project root, so API and worker data remain in the same `DocLens/data/` directory even though both processes start from `backend/`.
-
-## Demonstration flow
-
-1. Confirm the health badge reports the configured model and actual Torch device.
-2. Upload `samples/muscle-hypertrophy-meta-analysis.pdf`.
-3. Wait until the document status becomes `ready`.
-4. Inspect detected table, chart, and text regions.
-5. Ask a question tied to a visible table or figure.
-6. Click each `[R id]` citation and confirm that the correct region is highlighted.
-7. Explain the grounding score, numeric verification result, and agent trace.
-
-Do not describe an answer as numerically verified unless the verifier status is `consistent`. `skipped` means the answer contained no numeric claim, while `unverifiable`, `contradiction`, and `citation_gap` require review.
-
-## Checks before a demo
-
-Backend syntax and verifier tests on Windows, from `backend/`:
-
-```powershell
-.\.venv\Scripts\python.exe -m compileall -q app workers tests
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-Backend syntax and verifier tests on macOS or Linux, from `backend/` with the virtual environment active:
+From `frontend/`:
 
 ```bash
-python -m compileall -q app workers tests
-python -m unittest discover -s tests -v
+npx tsc --noEmit -p . && npm run build
 ```
 
-Frontend production build, from `frontend/`:
+## Scope and honest limitations
 
-```bash
-npm run build
-```
-
-Infrastructure:
-
-```bash
-docker compose ps
-```
-
-## Current implementation boundary
-
-The current implementation targets single, born-digital English PDFs with ordinary tables and simple bar or line charts. It supports region citations, retrieval traces, and a conservative numeric-consistency check. Equation OCR is optional because `pix2tex` is not installed by the default requirements file. Scanned documents, large cross-document corpora, production deployment, and benchmark-scale evaluation are outside the currently implemented scope.
-
-Numeric verification checks arithmetic consistency with extracted values; it does not prove that the parser selected the correct unit, year, series, or operand. All preliminary results must therefore be reported with the source region and any observed failure cases.
+- Built for born-digital English PDFs with ordinary tables and simple bar/line charts. Scanned
+  PDFs (no text layer) are not supported.
+- Equation OCR (`pix2tex`) is optional and not installed by default; equations keep their PDF text.
+- The numeric verifier checks that numbers in the answer match extracted values or simple
+  arithmetic on them. A `consistent` result does not prove the answer is correct in every
+  respect (wrong series or unit can still match).
+- Gemini's free tier has per-minute and per-day limits. Each question uses one or two calls
+  (plus one repair call when verification fails).
 
 ## Troubleshooting
 
-- `Could not reach the parse queue`: verify Redis is healthy with `docker compose ps`, then re-parse the failed document.
-- Document remains `parsing`: check the worker terminal for model-download, memory, or parser errors.
-- Qdrant connection failure: verify port `6333` is available and the `qdrant` container is healthy.
-- PostgreSQL connection failure: confirm `DATABASE_URL` and the `postgres` container.
-- Slow first run: allow model downloads and caches to complete before timing the demo.
-- MPS operator failure: set `TORCH_DEVICE=cpu` in `.env` and restart the API and worker.
-- Missing equation OCR: keep it documented as an optional module, or install and test `pix2tex` before claiming it works.
+| Symptom | Fix |
+|---|---|
+| Badge says **Parsing worker offline** | restart DocLens; read `.runtime/logs/worker*.log` |
+| Badge stays on **Loading AI models…** for minutes | models are still downloading — run setup again while online |
+| Document stuck in `queued` | the worker is not running (see above) |
+| Answer says model unavailable / rate limited | Gemini quota reached; wait a minute or set `GEMINI_RERANK=false` |
+| Port 8000 or 5173 already in use | run Stop first, then Start |
+| Apple MPS operator error | set `TORCH_DEVICE=cpu` in `.env` and restart |
+| Never run `docker compose down -v` | it erases all stored documents and vectors |

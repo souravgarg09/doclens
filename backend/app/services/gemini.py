@@ -47,6 +47,9 @@ def client() -> genai.Client:
 
 def image_part(path: str | Path) -> dict[str, str]:
     p = settings.resolve_project_path(path)
+    # Only region crops written by the parse worker may be sent to the model.
+    if not p.is_relative_to(settings.crops_dir) or not p.is_file():
+        raise OSError(f"refusing to send a file outside the crops directory: {p}")
     return {
         "type": "image",
         "mime_type": "image/png",
