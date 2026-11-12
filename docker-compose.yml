@@ -1,0 +1,28 @@
+# Infrastructure only. Run the API and worker natively so PyTorch can use CUDA,
+# Apple MPS, or CPU on the host operating system.
+name: doclens
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.6-pg16-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: figuremind
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+  redis:
+    image: redis:8.10.1-alpine3.23
+    restart: unless-stopped
+    ports: ["6379:6379"]
+  qdrant:
+    image: qdrant/qdrant:v1.19.1
+    restart: unless-stopped
+    ports: ["6333:6333", "6334:6334"]
+    volumes: ["qdrant:/qdrant/storage"]
+volumes:
+  # Names are pinned so data created before the FigureMind -> DocLens rename is kept.
+  pgdata:
+    name: figuremind_pgdata
+  qdrant:
+    name: figuremind_qdrant
