@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from google import genai
+from google.genai import types
 from ..config import settings
 
 log = logging.getLogger("gemini")
@@ -74,7 +75,11 @@ def client() -> genai.Client:
         # No client-level timeout: with it, the SDK silently retries a timed-out request, so a
         # "30 s" limit became 30 s + a hidden retry (requests ran 49-82 s). The limit is set per
         # request in generate() instead, where it is enforced exactly and retries are ours.
-        _client = genai.Client(api_key=settings.gemini_api_key)
+        # attempts=1: the SDK would otherwise retry 408/409/429/5xx up to 4 times with back-off
+        # (up to 30 s) before we ever see the error, so 429s and 503s became silent slowness
+        # (AI Studio's usage page showed them; our logs did not). Retries are handled here.
+        _client = genai.Client(api_key=settings.gemini_api_key,
+                               http_options=types.HttpOptions(retry_options=types.HttpRetryOptions(attempts=1)))
     return _client
 
 

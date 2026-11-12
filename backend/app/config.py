@@ -71,7 +71,9 @@ class Settings(BaseSettings):
     gemini_max_attempts: int = 2
     gemini_budget_s: float = 90
     # send a duplicate request when the first has not answered after this many seconds (0 = off)
-    gemini_hedge_after_s: float = 6
+    # Off by default: on the free tier every backup request counts against the per-minute limit
+    # and caused 429s. Turn on (e.g. 6) once billing is enabled on the Gemini project.
+    gemini_hedge_after_s: float = 0
 
     # Storage
     storage_dir: str = "./data"
