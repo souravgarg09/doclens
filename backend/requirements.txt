@@ -1,42 +1,46 @@
+# Pinned versions, tested together on 12 Nov 2026 (Windows 11, GTX 1650).
+# Upgrade policy: take the newest version unless it breaks something or measures slower.
+# The torch build (CUDA / Apple MPS / CPU) is chosen by setup with `uv pip install --torch-backend=auto`.
 # ── API ──
-fastapi==0.141.1
-uvicorn[standard]==0.53.0
-python-multipart==0.0.32
-pydantic==2.13.5
-pydantic-settings==2.15.0
-python-dotenv==1.2.3
+fastapi==0.162.5
+uvicorn[standard]==0.54.0
+python-multipart==0.0.33
+pydantic==2.14.3
+pydantic-settings==2.16.2
+python-dotenv==1.2.4
 # ── Data ──
-sqlalchemy[asyncio]==2.0.54
-asyncpg==0.31.0
-qdrant-client==1.19.1
+sqlalchemy[asyncio]==2.1.8
+asyncpg==0.32.0
+qdrant-client==1.20.0
 redis==8.1.0
 # ── Agent / LLM ──
-langgraph==1.2.11
-langchain-core==1.6.3
-google-genai==2.24.0
-# ── ML runtime (CUDA, Apple MPS, or CPU selected at runtime) ──
-torch==2.6.0
-torchvision==0.21.0
-transformers==4.57.6
+langgraph==1.2.20
+langchain-core==1.8.0
+google-genai==3.2.0
+# ── ML runtime ──
+# torch 2.15 + transformers 5.22 vs torch 2.6 + transformers 4.57 on the sample paper:
+# identical table/chart output, chart decoding 12.2 s vs 18.1 s, other stages equal.
+torch==2.15.0
+torchvision==0.29.2
+transformers==5.22.2
 accelerate==1.15.0
-sentencepiece==0.2.2
+sentencepiece==0.2.3
 protobuf==7.36.2
 safetensors==0.8.0
-huggingface-hub==0.36.2
-hf-transfer==0.1.9
-timm==1.0.29
+huggingface-hub==2.4.0
+hf-xet==1.8.0            # fast model downloads (successor of hf-transfer)
+timm==1.0.31
 einops==0.8.2
-# ── Layout detection (DocLayout-YOLO, YOLOv10-based) ──
-ultralytics==8.4.155
+# ── Layout detection (DocLayout-YOLO, YOLOv10-based; ships its own YOLO code) ──
 doclayout-yolo==0.0.4
+dill==0.4.1              # needed to load the 2025 DocLayout-YOLO weights
 # ── Specialised parsers ──
-#pix2tex==0.1.4          # equation OCR (LaTeX-OCR); Table Transformer + DePlot come from transformers
+#pix2tex==0.1.4          # optional equation OCR; Table Transformer + DePlot come from transformers
 # ── PDF / imaging ──
-# NumPy 1.x and the Torch/torchvision pair remain pinned for DocLayout-YOLO compatibility.
-pymupdf==1.28.2
-pillow==12.3.0
-numpy==1.26.4
+pymupdf==2.1
+pillow==13.0.0
+numpy==2.5.4
 # ── misc ──
 httpx==0.28.1
-orjson==3.12.0
+orjson==3.13.0
 tenacity==9.1.4

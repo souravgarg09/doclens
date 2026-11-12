@@ -102,6 +102,24 @@ class HedgingTests(unittest.TestCase):
         self.assertEqual(2, calls["n"])
 
 
+class MissingModelTests(unittest.TestCase):
+    def test_retired_primary_model_falls_back(self) -> None:
+        fake = Mock()
+        fake.interactions.create.side_effect = [NotFound("404 model not found"), SimpleNamespace(output_text="ok")]
+        with (
+            patch.object(gemini, "client", return_value=fake),
+            patch.object(settings, "gemini_model", "retired-model"),
+            patch.object(settings, "gemini_fallback_model", "fallback"),
+        ):
+            self.assertEqual("ok", gemini.generate(["q"]))
+        self.assertEqual(["retired-model", "fallback"],
+                         [c.kwargs["model"] for c in fake.interactions.create.call_args_list])
+
+
+class NotFound(Exception):
+    code = 404
+
+
 class Overloaded(Exception):
     code = 503
 

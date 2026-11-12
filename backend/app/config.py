@@ -57,10 +57,12 @@ class Settings(BaseSettings):
 
     # Gemini
     gemini_api_key: str = ""
-    # Measured 12 Nov 2026 with this project's key: 3.5-flash-lite answered in 1.7 s,
-    # 3.5-flash in ~14 s with minimal thinking, 3.8/3.7-flash did not answer within 45 s.
+    # Measured 12 Nov 2026 with this project's key: 3.5-flash-lite answered in ~2 s (primary).
+    # Fallback: gemini-3.6-flash, the stable Flash model on Google's official model list
+    # (7-35 s); 3.8/3.7-flash did not answer within 45 s. A model that returns "not found"
+    # is skipped automatically, so a retired model can never break questions.
     gemini_model: str = "gemini-3.5-flash-lite"
-    gemini_fallback_model: str = "gemini-3.5-flash"
+    gemini_fallback_model: str = "gemini-3.6-flash"
     # thinking level sent to the model ("minimal", "low", "medium", "high"; empty = model default)
     gemini_thinking: str = "minimal"
     # hard limit per HTTP request, tries per model, and total time per call (seconds)
@@ -80,11 +82,19 @@ class Settings(BaseSettings):
     cuda_fp16: bool = True
     # load every model when the worker starts, so the first upload is not slowed by model loading
     preload_models: bool = True
+    # the API embeds questions on the CPU so the GPU memory stays with the worker
+    api_embed_on_cpu: bool = True
 
     # AI models
-    layout_repo: str = "juliozhao/DocLayout-YOLO-DocStructBench"
-    layout_weights: str = "doclayout_yolo_docstructbench_imgsz1024.pt"
-    siglip_model: str = "google/siglip-base-patch16-224"
+    # DocLayout-YOLO DocStructBench weights, Jan 2025 release trained at 1280 px. On the sample
+    # paper it found the same tables/charts/equations as the Oct 2024 1024-px weights with higher
+    # confidence and half the duplicate boxes, for +65 ms per page.
+    layout_repo: str = "juliozhao/DocLayout-YOLO-DocStructBench-imgsz1280-2501"
+    layout_weights: str = "doclayout_yolo_docstructbench_imgsz1280_2501.pt"
+    layout_imgsz: int = 1280
+    # SigLIP 2 (Feb 2025): same size and API as SigLIP; 10/16 vs 8/16 correct regions in the
+    # top 6 on our retrieval test (hybrid with BM25).
+    siglip_model: str = "google/siglip2-base-patch16-224"
     table_model: str = (
         "microsoft/table-transformer-structure-recognition-v1.1-all"
     )

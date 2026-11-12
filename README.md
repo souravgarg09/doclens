@@ -12,11 +12,11 @@ supervisor Dr. Vishwanath Bijalwan.
 ```text
 PDF upload ─▶ FastAPI stores it and queues a Redis job
             ─▶ parsing worker (all local, no cloud calls):
-                 PyMuPDF render ─▶ DocLayout-YOLO regions
+                 PyMuPDF render ─▶ DocLayout-YOLO regions ─▶ drop empty/duplicate boxes
                    ├─ tables   ─▶ Table Transformer ─▶ typed cells
-                   ├─ charts   ─▶ DePlot            ─▶ data series
+                   ├─ charts   ─▶ DePlot            ─▶ data series  (background phase, after "ready")
                    └─ text     ─▶ PDF text layer
-                 SigLIP embeddings ─▶ Qdrant · rows ─▶ PostgreSQL
+                 SigLIP 2 embeddings ─▶ Qdrant · rows ─▶ PostgreSQL
 Question   ─▶ LangGraph agent:
                  hybrid retrieval (SigLIP vectors + BM25 keywords)
                ─▶ rerank (similarity + keyword + structure priors; optional Gemini)
@@ -90,7 +90,9 @@ Logs are in `.runtime/logs/`.
 ## Using it
 
 1. Upload a PDF. A progress bar shows the page being analysed.
-2. When it is ready, click **Parsed in …** above the page to see how long each stage took.
+2. As soon as it says ready you can ask questions; a "Reading chart values…" chip shows while chart
+   numbers are still being decoded in the background. Click **Ready in …** above the page to see how
+   long each stage took.
 3. Ask a question (Enter). The answer cites regions like `R81`; click a citation to jump to and
    highlight that region on the page.
 4. Read the verification line: `consistent` means every number in the answer matched an
@@ -121,18 +123,21 @@ loading are deliberately kept out of the parse numbers and reported separately.
 ### Measured results (12 November 2026)
 
 Windows 11 laptop · AMD Ryzen 5 4600H · 16 GB RAM · NVIDIA GTX 1650 (4 GB) · sample paper
-(10 pages, 104 regions: 74 text, 19 titles, 5 tables, 4 charts, 2 equations). Full reports are in
-`benchmarks/`.
+(10 pages; 89 regions after removing duplicates: 5 tables, 4 charts, 2 equations, text and titles).
+Full reports are in `benchmarks/`.
 
 | Step | Before this overhaul | Now |
 |---|---|---|
-| Start-up until "Ready" (models loaded and warmed up) | models loaded inside the first parse | 47–62 s, once per start |
-| Parse the 10-page paper (upload → ready) | ~80 s (CPU-only PyTorch; GPU kernels untuned) | **21–30 s** |
-| Answer a question (median) | often minutes or no answer (Gemini model hung, 5× retry loops) | **5.8–9.3 s** across runs (fastest 2.2 s) |
+| Start-up until "Ready" (models loaded and warmed up) | models loaded inside the first parse | about 60 s, once per start |
+| Upload → ready to answer questions | ~80 s (CPU-only PyTorch; GPU kernels untuned) | **6.8 s** median (6.8–10.9 s) |
+| Upload → chart values decoded (background) | included above | ~18 s |
+| Answer a question (median) | often minutes or no answer (Gemini model hung, 5× retry loops) | **5.8–11 s** across runs (fastest 2.2 s) |
 | Tables with real cell structure | 0 of 5 (Table Transformer crashed silently) | 5 of 5 |
+| Correct region among the 6 sent to Gemini (16-question test) | 8 of 16 (SigLIP + BM25) | 10 of 16 (SigLIP 2 + BM25) |
 
-Where parse time goes now: chart decoding (DePlot) 11–24 s for 4 charts, layout 1.8–3.2 s,
-embeddings ~1.6–2.2 s, tables ~1–2 s, everything else under 1 s. Question time is almost entirely
+Where parse time goes now: layout 2.4–4.6 s, embeddings ~1.5–2 s, tables ~1–2 s, everything else
+under 1 s; then chart decoding (DePlot, ~11 s for 4 charts) runs in the background while questions
+can already be asked. Question time is almost entirely
 the Gemini call, whose latency varies from 2 s to 30 s for the same prompt; hedged requests cut
 most of the slow cases.
 
@@ -145,6 +150,27 @@ call replaced by local hybrid SigLIP + BM25 scoring.
 
 These numbers are for this laptop only. They say nothing about Apple Silicon; run the benchmark
 on the Mac to get its own numbers.
+
+## Models and versions (and why)
+
+Every component was checked against the newest release on 12 November 2026 and measured on
+DocLens's own sample. Rule: take the newest version unless it breaks something or measures slower.
+
+| Job | Model / library | Why this one |
+|---|---|---|
+| Layout | DocLayout-YOLO DocStructBench **1280 (Jan 2025)** | newest weights; same regions as the 2024 weights with higher confidence and half the duplicate boxes, +65 ms/page |
+| Tables | Table Transformer v1.1-all | newest release (the repo is now archived); runs on transformers 5 with a config repair |
+| Charts | DePlot | no newer Google release; decoded in the background so it never delays "ready" |
+| Search | **SigLIP 2** base + BM25 keywords | newest SigLIP; 10/16 vs 8/16 correct regions in the top 6 on our retrieval test |
+| Answers | Gemini 3.5 Flash-Lite → 3.6 Flash | fastest reliable model with our key; the stable Flash model as fallback |
+| Runtime | torch 2.15 · transformers 5.22 · numpy 2.5 · PyMuPDF 2.1 | identical output to the old stack, chart decoding 12.2 s vs 18.1 s |
+
+Changing the embedding model is safe: each embedding model has its own vector collection and the
+worker re-parses documents indexed with an old model automatically on start.
+
+Open decision: a dedicated text embedder (arctic-embed-s or bge-small) put the correct region in the
+top 6 for 13/16 questions, against 10/16 for SigLIP 2 + BM25. It is a different model, so it waits for
+the team's approval.
 
 ## Renaming the product or moving the folder
 
@@ -162,7 +188,7 @@ on the Mac to get its own numbers.
 | Setting | Default | Meaning |
 |---|---|---|
 | `GEMINI_API_KEY` | — | required for questions |
-| `GEMINI_MODEL` / `GEMINI_FALLBACK_MODEL` | `gemini-3.5-flash-lite` / `gemini-3.5-flash` | fallback is used when the main model is rate-limited, overloaded or times out |
+| `GEMINI_MODEL` / `GEMINI_FALLBACK_MODEL` | `gemini-3.5-flash-lite` / `gemini-3.6-flash` | fallback is used when the main model is rate-limited, overloaded, times out or no longer exists |
 | `GEMINI_THINKING` | `minimal` | model thinking level; higher is slower |
 | `GEMINI_TIMEOUT_S` / `GEMINI_BUDGET_S` | `30` / `75` | hard limit per request / per call including retries |
 | `GEMINI_HEDGE_AFTER_S` | `6` | send a duplicate request if no reply after this many seconds (0 = off) |

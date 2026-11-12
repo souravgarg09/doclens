@@ -91,12 +91,12 @@ export default function App() {
   }, [sel]);
 
   useEffect(() => {
-    if (!docs.some((item) => item.status === "queued" || item.status === "parsing")) return;
+    if (!docs.some((item) => item.status === "queued" || item.status === "parsing" || item.progress?.stage === "charts")) return;
     const timer = window.setInterval(async () => {
       try {
         const list = await refreshDocs();
         const latest = list.find((item) => item.id === sel);
-        if (latest && latest.status !== doc?.status) await loadDoc(latest.id);
+        if (latest && (latest.status !== doc?.status || latest.progress?.stage !== doc?.progress?.stage)) await loadDoc(latest.id);
         else if (latest) setDoc((current) => (current && current.id === latest.id ? { ...current, ...latest } : current));
       } catch (ex) {
         setErr((ex as Error).message);
@@ -233,7 +233,7 @@ export default function App() {
         <ul className="docs">
           {docs.map((item) => (
             <li key={item.id} className={item.id === sel ? "active" : ""} onClick={() => setSel(item.id)}>
-              <div className="doc-copy"><b title={item.title}>{item.title}</b><small><i className={`dot ${item.status}`} /> {item.status === "parsing" && item.progress?.pages ? `parsing ${progressPercent(item)}%` : item.status}{item.pages ? ` · ${item.pages} pages` : ""}{item.status === "ready" && item.parse_stats ? ` · ${formatSeconds(item.parse_stats.total_seconds)}` : ""}</small></div>
+              <div className="doc-copy"><b title={item.title}>{item.title}</b><small><i className={`dot ${item.status}`} /> {item.status === "parsing" && item.progress?.pages ? `parsing ${progressPercent(item)}%` : item.status}{item.pages ? ` · ${item.pages} pages` : ""}{item.status === "ready" && item.parse_stats ? ` · ${formatSeconds(item.parse_stats.total_seconds)}` : ""}{item.progress?.stage === "charts" ? " · reading charts" : ""}</small></div>
               <div className="doc-actions">
                 {item.status === "failed" && <button className="icon-button" title="Retry parsing" aria-label={`Retry parsing ${item.title}`} disabled={busy !== null} onClick={(event) => { event.stopPropagation(); void reparseDocument(item); }}>↻</button>}
                 <button className="icon-button danger" title="Delete document" aria-label={`Delete ${item.title}`} disabled={busy !== null || item.status === "parsing"} onClick={(event) => { event.stopPropagation(); void deleteDocument(item); }}>×</button>
@@ -254,7 +254,7 @@ export default function App() {
               <label className="toggle"><input type="checkbox" checked={showAll} onChange={(event) => setShowAll(event.target.checked)} /> show regions</label>
               <button className="secondary" disabled={!highlighted.length} onClick={() => { setHighlighted([]); setSelectedRegion(null); }}>Clear highlight</button>
             </div>
-            <div className="stats">{Object.entries(stats).map(([type, count]) => <span key={type} style={{ borderColor: TYPE_COLORS[type], color: TYPE_COLORS[type] }}>{type} {count}</span>)}{doc.status !== "ready" && <em>{doc.status === "failed" ? doc.error : "Parsing document…"}</em>}{doc.status === "ready" && doc.parse_stats && <ParseReport stats={doc.parse_stats} />}</div>
+            <div className="stats">{Object.entries(stats).map(([type, count]) => <span key={type} style={{ borderColor: TYPE_COLORS[type], color: TYPE_COLORS[type] }}>{type} {count}</span>)}{doc.status !== "ready" && <em>{doc.status === "failed" ? doc.error : "Parsing document…"}</em>}{doc.status === "ready" && doc.progress?.stage === "charts" && <span className="enriching" role="status">Reading chart values{doc.progress.pages ? ` ${Math.max(1, doc.progress.page)}/${doc.progress.pages}` : ""}… you can already ask questions</span>}{doc.status === "ready" && doc.parse_stats && <ParseReport stats={doc.parse_stats} />}</div>
             {doc.status === "ready" ? <CitationOverlay src={api.pageUrl(doc.id, page)} regions={regions.filter((region) => region.page === page)} highlighted={highlighted} showAll={showAll} onSelect={(region) => { setSelectedRegion(region); setHighlighted([region.id]); }} /> : (
               <div className={`empty-state ${doc.status}`}><span className="empty-icon">{doc.status === "failed" ? "!" : "↻"}</span><h3>{doc.status === "failed" ? "Parsing failed" : "Building the region index"}</h3><p>{doc.status === "failed" ? doc.error : parsingMessage(doc, health)}</p>{doc.status !== "failed" && <div className="parse-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPercent(doc)}><span style={{ width: `${Math.max(4, progressPercent(doc))}%` }} /></div>}{doc.status === "failed" && <button className="primary" disabled={busy !== null} onClick={() => void reparseDocument(doc)}>Retry parsing</button>}</div>
             )}
@@ -343,6 +343,7 @@ function HealthBadge({ health }: { health: Health | null }) {
     if (!health.gemini) title = "Gemini key missing";
     else if (!worker || worker.state === "offline" || worker.state === "unreachable") title = "Parsing worker offline";
     else if (worker.state === "loading") title = "Loading AI models…";
+    else if (worker.state === "parsing" && worker.stage === "charts") { tone = "ok"; title = worker.pages ? `Reading chart ${worker.page} of ${worker.pages}` : "Reading chart values"; }
     else if (worker.state === "parsing") { tone = "ok"; title = worker.pages ? `Parsing page ${worker.page} of ${worker.pages}` : "Parsing a document"; }
     else { tone = "ok"; title = "Ready"; }
     if (worker?.state === "loading" && worker.detail) detail = `${worker.detail} · ${detail}`;
@@ -365,7 +366,7 @@ function ParseReport({ stats }: { stats: ParseStats }) {
   const max = Math.max(...entries.map(([, seconds]) => seconds), 0.001);
   return (
     <details className="parse-report">
-      <summary>Parsed in <b>{formatSeconds(stats.total_seconds)}</b> · {formatSeconds(stats.seconds_per_page)}/page · {stats.device}</summary>
+      <summary>Ready in <b>{formatSeconds(stats.total_seconds)}</b>{stats.enriched_seconds ? <> · charts done at {formatSeconds(stats.enriched_seconds)}</> : null} · {stats.device}</summary>
       <ul>{entries.map(([stage, seconds]) => (
         <li key={stage}><span>{STAGE_LABELS[stage] ?? stage}{(stats.counts[stage] ?? 0) > 1 ? ` ×${stats.counts[stage]}` : ""}</span><i style={{ width: `${(seconds / max) * 100}%` }} /><code>{formatSeconds(seconds)}</code></li>
       ))}</ul>

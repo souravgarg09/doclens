@@ -1,12 +1,12 @@
 export type BBox = [number, number, number, number]; // x0,y0,x1,y1 normalized 0..1
 export type Region = { id: number; page: number; type: string; bbox: BBox; content: string; structured: Record<string, unknown> | null; confidence: number };
 export type ParseProgress = { stage: string; page: number; pages: number };
-export type ParseStats = { stages: Record<string, number>; counts: Record<string, number>; total_seconds: number; pages: number; regions: number; region_types: Record<string, number>; seconds_per_page: number; device: string; platform: string };
+export type ParseStats = { stages: Record<string, number>; counts: Record<string, number>; total_seconds: number; charts_seconds?: number; enriched_seconds?: number; pages: number; regions: number; region_types: Record<string, number>; seconds_per_page: number; device: string; platform: string };
 export type Doc = { id: number; title: string; pages: number; status: string; error: string | null; created_at?: string | null; progress?: ParseProgress | null; parse_stats?: ParseStats | null };
 export type Citation = { region_id: number; page: number; type: string; bbox: BBox; score: number; snippet: string };
 export type Verification = { status: string; summary: string; checks: { claim: string; value: number; matched: boolean; evidence?: string; recomputed?: number | null; note?: string }[] };
 export type Answer = { id: number; question: string; answer: string; status: "answered" | "refused" | "flagged"; grounding: number; citations: Citation[]; verification: Verification | null; trace: { node: string; detail: string; ms: number }[] };
-export type WorkerStatus = { state: "loading" | "idle" | "parsing" | "offline" | "unreachable"; detail?: string; document_id?: number; page?: number; pages?: number; queued_jobs: number };
+export type WorkerStatus = { state: "loading" | "idle" | "parsing" | "offline" | "unreachable"; stage?: string; detail?: string; document_id?: number; page?: number; pages?: number; queued_jobs: number };
 export type Health = { ok: boolean; gemini: boolean; model: string; fallback_model: string; device: string; device_detail?: string; gemini_rerank?: boolean; worker?: WorkerStatus };
 
 const BASE = import.meta.env.VITE_API_URL ?? "";

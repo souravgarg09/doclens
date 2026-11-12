@@ -38,6 +38,8 @@ async def lifespan(_: FastAPI):
     # Load the SigLIP text encoder in the background so the first question does not pay
     # ~5 s of model loading; the API answers health checks immediately meanwhile.
     from .services import embeddings
+    if settings.api_embed_on_cpu:
+        embeddings.use_cpu()  # keep GPU memory for the parsing worker
     warmup = asyncio.create_task(asyncio.to_thread(embeddings.embed_text, ["warm-up"]))
     yield
     warmup.cancel()

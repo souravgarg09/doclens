@@ -75,10 +75,12 @@ def _status_code(e: Exception) -> int | None:
 
 
 def _classify(e: Exception) -> str:
-    """'rate_limited', 'transient' or 'permanent'."""
+    """'rate_limited', 'model_missing', 'transient' or 'permanent'."""
     code = _status_code(e)
     if code == 429:
         return "rate_limited"
+    if code == 404:
+        return "model_missing"  # retired or misspelled model name: try the next model
     if code in _RETRY_STATUS:
         return "transient"
     text = f"{type(e).__name__} {e}".lower()
@@ -150,6 +152,10 @@ def generate(parts: list[Any], *, system: str | None = None,
                 failures.append(f"{model} attempt {attempt}: {type(e).__name__} {str(e)[:160]}")
                 if kind == "rate_limited":
                     log.warning("generate: %s is rate limited (429); switching model", model)
+                    break
+                if kind == "model_missing":
+                    log.error("generate: model %s was not found (404); check GEMINI_MODEL / "
+                              "GEMINI_FALLBACK_MODEL. Trying the next model", model)
                     break
                 log.warning("generate: %s transient failure on attempt %d/%d: %s",
                             model, attempt, settings.gemini_max_attempts, str(e)[:160])

@@ -196,3 +196,7 @@ textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px #8b5cf61c; }
 .parse-report li { display: grid; grid-template-columns: 130px 1fr 52px; align-items: center; gap: 8px; }
 .parse-report li i { display: block; height: 6px; border-radius: 999px; background: linear-gradient(90deg, var(--accent-2), var(--accent)); }
 .parse-report li code { text-align: right; color: var(--text); }
+
+.stats .enriching { border-color: var(--accent-2); color: var(--accent-2); animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .stats .enriching { animation: none; } }

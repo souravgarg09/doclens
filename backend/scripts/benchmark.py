@@ -72,15 +72,19 @@ def parse_once(client: httpx.Client, pdf: Path, timeout: float) -> dict[str, Any
     start = time.perf_counter()
     with pdf.open("rb") as fh:
         doc = client.post("/api/documents", files={"file": (pdf.name, fh, "application/pdf")}).raise_for_status().json()["document"]
+    ready_s = None
     while True:
         detail = client.get(f"/api/documents/{doc['id']}").raise_for_status().json()["document"]
-        if detail["status"] in ("ready", "failed"):
-            break
+        if detail["status"] == "ready" and ready_s is None:
+            ready_s = round(time.perf_counter() - start, 2)  # questions can be asked from here
+        if detail["status"] == "failed" or (detail["status"] == "ready" and not detail.get("progress")):
+            break  # failed, or ready with the background chart phase finished
         if time.perf_counter() - start > timeout:
-            raise SystemExit(f"document {doc['id']} not ready after {timeout:.0f}s")
+            raise SystemExit(f"document {doc['id']} not finished after {timeout:.0f}s")
         time.sleep(0.5)
     return {"document_id": doc["id"], "status": detail["status"], "error": detail.get("error"),
-            "upload_to_ready_s": round(time.perf_counter() - start, 2), "parse_stats": detail.get("parse_stats")}
+            "upload_to_ready_s": ready_s, "upload_to_charts_done_s": round(time.perf_counter() - start, 2),
+            "parse_stats": detail.get("parse_stats")}
 
 
 def ask(client: httpx.Client, document_id: int, question: str) -> dict[str, Any]:
@@ -103,8 +107,10 @@ def ask(client: httpx.Client, document_id: int, question: str) -> dict[str, Any]
 
 def summarise(runs: list[dict[str, Any]]) -> dict[str, Any]:
     ready = [r["parse"]["upload_to_ready_s"] for r in runs if r["parse"]["status"] == "ready"]
+    done = [r["parse"]["upload_to_charts_done_s"] for r in runs if r["parse"]["status"] == "ready"]
     q_times = [a["seconds"] for r in runs for a in r["answers"] if "status" in a]
     return {"parse_median_s": round(statistics.median(ready), 2) if ready else None,
+            "charts_done_median_s": round(statistics.median(done), 2) if done else None,
             "parse_min_s": min(ready) if ready else None, "parse_max_s": max(ready) if ready else None,
             "question_median_s": round(statistics.median(q_times), 2) if q_times else None,
             "answered": sum(1 for r in runs for a in r["answers"] if a.get("status") == "answered"),
@@ -120,16 +126,18 @@ def to_markdown(report: dict[str, Any]) -> str:
              f" · Gemini rerank {'on' if h.get('gemini_rerank') else 'off'}",
              f"- PDF: {report['pdf']} · runs: {len(report['runs'])} · waited {report['worker_wait_s']:.1f}s for the worker's models",
              "", "## Summary", "",
-             f"- Parse (upload → ready): median **{s['parse_median_s']} s** (min {s['parse_min_s']}, max {s['parse_max_s']})",
+             f"- Upload → ready (questions possible): median **{s['parse_median_s']} s** (min {s['parse_min_s']}, max {s['parse_max_s']})",
+             f"- Upload → chart values decoded (background phase): median {s.get('charts_done_median_s')} s",
              f"- Question latency: median **{s['question_median_s']} s**",
              f"- Answered {s['answered']}/{s['questions']} · Gemini quota/unavailable errors: {s['quota_errors']}",
              "", "## Parse stages (seconds)", "",
-             "| run | total | " + " | ".join(STAGE_ORDER) + " | pages | regions |",
-             "|---|---|" + "---|" * len(STAGE_ORDER) + "---|---|"]
+             "| run | ready | charts done | " + " | ".join(STAGE_ORDER) + " | pages | regions |",
+             "|---|---|---|" + "---|" * len(STAGE_ORDER) + "---|---|"]
     for i, r in enumerate(report["runs"], 1):
         ps = r["parse"].get("parse_stats") or {}
         st = ps.get("stages", {})
-        lines.append(f"| {i} | {r['parse']['upload_to_ready_s']} | " + " | ".join(str(st.get(k, "–")) for k in STAGE_ORDER)
+        lines.append(f"| {i} | {r['parse']['upload_to_ready_s']} | {r['parse'].get('upload_to_charts_done_s', '–')} | "
+                     + " | ".join(str(st.get(k, "–")) for k in STAGE_ORDER)
                      + f" | {ps.get('pages', '–')} | {ps.get('regions', '–')} |")
     lines += ["", "## Questions", "", "| run | question | seconds | status | verify | retrieve | rerank | answer | verify ms |",
               "|---|---|---|---|---|---|---|---|---|"]
@@ -163,7 +171,8 @@ def main() -> None:
         for run in range(1, args.runs + 1):
             parse = parse_once(client, args.pdf, args.timeout)
             stats = parse.get("parse_stats") or {}
-            print(f"run {run}: parse {parse['status']} in {parse['upload_to_ready_s']}s · stages {stats.get('stages')}")
+            print(f"run {run}: {parse['status']} · ready (can ask) after {parse['upload_to_ready_s']}s · "
+                  f"charts done after {parse['upload_to_charts_done_s']}s · stages {stats.get('stages')}")
             answers = []
             if parse["status"] == "ready":
                 for q in questions:

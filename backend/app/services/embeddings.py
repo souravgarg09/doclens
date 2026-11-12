@@ -13,31 +13,49 @@ from transformers import AutoModel, AutoProcessor
 from ..config import settings
 from ..device import DEVICE, autocast
 
+# The worker embeds regions on the GPU. The API only embeds one short question at a time,
+# so it runs SigLIP on the CPU (a fraction of a second) and leaves the GPU memory to the
+# worker: on a 4 GB card two GPU copies of SigLIP 2 overflowed into shared memory and made
+# every stage ~10x slower. The API calls use_cpu() before anything is loaded.
+_device = DEVICE
+
+
+def use_cpu() -> None:
+    global _device
+    if _load.cache_info().currsize:
+        raise RuntimeError("use_cpu() must be called before the model is loaded")
+    _device = torch.device("cpu")
+
 
 @lru_cache(maxsize=1)
 def _load():
     proc = AutoProcessor.from_pretrained(settings.siglip_model)
-    model = AutoModel.from_pretrained(settings.siglip_model).to(DEVICE).eval()
+    model = AutoModel.from_pretrained(settings.siglip_model).to(_device).eval()
     return proc, model
+
+
+def _as_tensor(features) -> torch.Tensor:
+    """transformers 4 returns a tensor from get_*_features; transformers 5 returns an output object."""
+    return features if isinstance(features, torch.Tensor) else features.pooler_output
 
 
 @torch.inference_mode()
 def embed_text(texts: list[str]) -> torch.Tensor:
     proc, model = _load()
     # SigLIP was trained with padding="max_length" (64 tokens)
-    inputs = proc(text=[t[:400] for t in texts], padding="max_length", truncation=True, max_length=64, return_tensors="pt").to(DEVICE)
+    inputs = proc(text=[t[:400] for t in texts], padding="max_length", truncation=True, max_length=64, return_tensors="pt").to(_device)
     with autocast():
         feats = model.get_text_features(**inputs)
-    return torch.nn.functional.normalize(feats.float(), dim=-1).cpu()
+    return torch.nn.functional.normalize(_as_tensor(feats).float(), dim=-1).cpu()
 
 
 @torch.inference_mode()
 def embed_images(images: list[Image.Image]) -> torch.Tensor:
     proc, model = _load()
-    inputs = proc(images=[im.convert("RGB") for im in images], return_tensors="pt").to(DEVICE)
+    inputs = proc(images=[im.convert("RGB") for im in images], return_tensors="pt").to(_device)
     with autocast():
         feats = model.get_image_features(**inputs)
-    return torch.nn.functional.normalize(feats.float(), dim=-1).cpu()
+    return torch.nn.functional.normalize(_as_tensor(feats).float(), dim=-1).cpu()
 
 
 def embed_region(crop: Image.Image | None, text: str) -> list[float]:

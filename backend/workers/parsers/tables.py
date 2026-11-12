@@ -4,16 +4,32 @@ Rows/columns are detected on the crop; cell *text* is read from the PDF text
 layer within each cell rectangle (born-digital PDFs), giving typed cells with
 numeric values that the verifier can recompute from.
 """
+import json
 from functools import lru_cache
+from pathlib import Path
 
 import pymupdf
 import torch
+from huggingface_hub import hf_hub_download
 from PIL import Image
-from transformers import AutoImageProcessor, TableTransformerForObjectDetection
+from transformers import AutoImageProcessor, TableTransformerConfig, TableTransformerForObjectDetection
 
 from app.config import settings
 from app.device import DEVICE, autocast
 from app.services.verifier import extract_numbers
+
+
+def _config() -> TableTransformerConfig:
+    """Load the 2023 model config, repairing a field newer transformers validates strictly.
+
+    The published config has "dilation": null. transformers 5 requires a bool and refuses
+    to load the model; null always meant "no dilation", so it is set to False explicitly.
+    """
+    path = hf_hub_download(settings.table_model, "config.json")
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    if raw.get("dilation") is None:
+        raw["dilation"] = False
+    return TableTransformerConfig.from_dict(raw)
 
 
 @lru_cache(maxsize=1)
@@ -23,8 +39,8 @@ def _model():
     # (shortest side 800 px, longest side capped at 1000 px, as the TATR authors resize).
     proc = AutoImageProcessor.from_pretrained(settings.table_model,
                                               size={"shortest_edge": 800, "longest_edge": 1000})
-    model = TableTransformerForObjectDetection.from_pretrained(settings.table_model).to(DEVICE).eval()
-    return proc, model
+    model = TableTransformerForObjectDetection.from_pretrained(settings.table_model, config=_config())
+    return proc, model.to(DEVICE).eval()
 
 
 @torch.inference_mode()

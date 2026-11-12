@@ -15,7 +15,6 @@ import sys
 import time
 from pathlib import Path
 
-os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "1")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from huggingface_hub import hf_hub_download, list_repo_files, snapshot_download  # noqa: E402
