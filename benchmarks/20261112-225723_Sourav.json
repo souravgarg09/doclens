@@ -1,0 +1,253 @@
+{
+  "started_at": "2026-11-12T22:53:16",
+  "machine": {
+    "host": "Sourav",
+    "os": "Windows 11",
+    "arch": "AMD64",
+    "python": "3.12.16",
+    "cpu": "AMD64 Family 23 Model 96 Stepping 1, AuthenticAMD",
+    "ram_gb": 15.4,
+    "cpu_cores": 6
+  },
+  "health": {
+    "ok": true,
+    "app": {
+      "name": "DocLens",
+      "tagline": "Grounded answers from visual PDFs",
+      "logo_letter": "D"
+    },
+    "gemini": true,
+    "model": "gemini-3.5-flash-lite",
+    "fallback_model": "gemini-3.5-flash,gemini-3.6-flash",
+    "device": "cuda",
+    "device_detail": "CUDA \u00b7 NVIDIA GeForce GTX 1650 \u00b7 fp32",
+    "gemini_rerank": false,
+    "worker": {
+      "state": "idle",
+      "at": 1794504194.2117832,
+      "queued_jobs": 0
+    }
+  },
+  "pdf": "muscle-hypertrophy-meta-analysis.pdf",
+  "worker_wait_s": 0.03,
+  "runs": [
+    {
+      "run": 1,
+      "parse": {
+        "document_id": 17,
+        "status": "ready",
+        "error": null,
+        "upload_to_ready_s": 11.01,
+        "upload_to_charts_done_s": 22.26,
+        "parse_stats": {
+          "stages": {
+            "render": 0.804,
+            "index_setup": 0.055,
+            "layout": 4.506,
+            "text": 0.152,
+            "embeddings": 1.967,
+            "tables": 2.004,
+            "equations": 0.002,
+            "vector_upsert": 0.085,
+            "charts": 11.231
+          },
+          "counts": {
+            "render": 1,
+            "index_setup": 1,
+            "layout": 10,
+            "text": 10,
+            "embeddings": 10,
+            "tables": 5,
+            "equations": 2,
+            "vector_upsert": 1,
+            "charts": 4
+          },
+          "total_seconds": 10.429,
+          "pages": 10,
+          "regions": 89,
+          "region_types": {
+            "title": 18,
+            "text": 60,
+            "table": 5,
+            "equation": 2,
+            "chart": 4
+          },
+          "duplicates_removed": 6,
+          "seconds_per_page": 1.043,
+          "device": "CUDA \u00b7 NVIDIA GeForce GTX 1650 \u00b7 fp32",
+          "platform": "Windows AMD64",
+          "torch": "2.15.0+cu132",
+          "charts_seconds": 11.231,
+          "enriched_seconds": 21.675
+        }
+      },
+      "answers": [
+        {
+          "question": "How many studies were included in the meta-analysis?",
+          "seconds": 94.25,
+          "status": "answered",
+          "verification": "skipped",
+          "citations": 1,
+          "steps_ms": {
+            "parse": 15,
+            "retrieve": 345,
+            "rerank": 1,
+            "expand": 21,
+            "answer": 93743,
+            "verify": 0
+          },
+          "quota_or_unavailable": false,
+          "answer": "Because of the small number of studies identified for this analysis (Table 1), the number of predictors that could be included in the full statistical model was small [R1821]."
+        },
+        {
+          "question": "What was the effect size difference between multiple sets and single sets for hypertrophy?",
+          "seconds": 28.61,
+          "status": "answered",
+          "verification": "consistent",
+          "citations": 1,
+          "steps_ms": {
+            "parse": 22,
+            "retrieve": 171,
+            "rerank": 0,
+            "expand": 16,
+            "answer": 28340,
+            "verify": 8
+          },
+          "quota_or_unavailable": false,
+          "answer": "Multiple sets were associated with a larger effect size than a single set with a difference of 0.10 \u00b1 0.04 [R1787]."
+        },
+        {
+          "question": "What does Table 1 report?",
+          "seconds": 8.62,
+          "status": "answered",
+          "verification": "skipped",
+          "citations": 1,
+          "steps_ms": {
+            "parse": 12,
+            "retrieve": 161,
+            "rerank": 0,
+            "expand": 16,
+            "answer": 8391,
+            "verify": 1
+          },
+          "quota_or_unavailable": false,
+          "answer": "Table 1 reports the studies included in the analysis [R1803]."
+        }
+      ]
+    },
+    {
+      "run": 2,
+      "parse": {
+        "document_id": 18,
+        "status": "ready",
+        "error": null,
+        "upload_to_ready_s": 6.73,
+        "upload_to_charts_done_s": 18.02,
+        "parse_stats": {
+          "stages": {
+            "render": 0.72,
+            "index_setup": 0.035,
+            "layout": 2.443,
+            "text": 0.125,
+            "embeddings": 1.456,
+            "tables": 0.787,
+            "equations": 0.001,
+            "vector_upsert": 0.093,
+            "charts": 11.626
+          },
+          "counts": {
+            "render": 1,
+            "index_setup": 1,
+            "layout": 10,
+            "text": 10,
+            "embeddings": 10,
+            "tables": 5,
+            "equations": 2,
+            "vector_upsert": 1,
+            "charts": 4
+          },
+          "total_seconds": 6.284,
+          "pages": 10,
+          "regions": 89,
+          "region_types": {
+            "title": 18,
+            "text": 60,
+            "table": 5,
+            "equation": 2,
+            "chart": 4
+          },
+          "duplicates_removed": 6,
+          "seconds_per_page": 0.628,
+          "device": "CUDA \u00b7 NVIDIA GeForce GTX 1650 \u00b7 fp32",
+          "platform": "Windows AMD64",
+          "torch": "2.15.0+cu132",
+          "charts_seconds": 11.626,
+          "enriched_seconds": 17.922
+        }
+      },
+      "answers": [
+        {
+          "question": "How many studies were included in the meta-analysis?",
+          "seconds": 46.43,
+          "status": "flagged",
+          "verification": "citation_gap",
+          "citations": 1,
+          "steps_ms": {
+            "parse": 16,
+            "retrieve": 143,
+            "rerank": 0,
+            "expand": 13,
+            "answer": 46212,
+            "verify": 0
+          },
+          "quota_or_unavailable": false,
+          "answer": "The exact total number of studies included in the analysis is not explicitly stated as a single total sum in Table 1, but the table lists multiple individual studies including Galv\u00e3o and Taaffe (11), Marzolini et al. (26), McBride et al. (27), Munn et al. (30), Ostrowski et al. (31), Rhea et al. (32), R\u00f8nnestad et al. (35), and Starkey et al. (40) [R1893]."
+        },
+        {
+          "question": "What was the effect size difference between multiple sets and single sets for hypertrophy?",
+          "seconds": 14.45,
+          "status": "answered",
+          "verification": "consistent",
+          "citations": 1,
+          "steps_ms": {
+            "parse": 9,
+            "retrieve": 129,
+            "rerank": 0,
+            "expand": 10,
+            "answer": 14261,
+            "verify": 0
+          },
+          "quota_or_unavailable": false,
+          "answer": "Multiple sets were associated with a larger effect size (ES) than a single set with a difference of 0.10 \u0017 0.04 (confidence interval: 0.02, 0.19; p = 0.016) [R1876]."
+        },
+        {
+          "question": "What does Table 1 report?",
+          "seconds": 15.03,
+          "status": "answered",
+          "verification": "skipped",
+          "citations": 1,
+          "steps_ms": {
+            "parse": 9,
+            "retrieve": 140,
+            "rerank": 0,
+            "expand": 17,
+            "answer": 14814,
+            "verify": 0
+          },
+          "quota_or_unavailable": false,
+          "answer": "Table 1 reports the studies included in the analysis [R1892]."
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "parse_median_s": 8.87,
+    "charts_done_median_s": 20.14,
+    "parse_min_s": 6.73,
+    "parse_max_s": 11.01,
+    "question_median_s": 21.82,
+    "answered": 5,
+    "questions": 6,
+    "quota_errors": 0
+  }
+}

@@ -66,10 +66,10 @@ class Settings(BaseSettings):
     gemini_fallback_model: str = "gemini-3.5-flash,gemini-3.6-flash"
     # thinking level sent to the model ("minimal", "low", "medium", "high"; empty = model default)
     gemini_thinking: str = "minimal"
-    # hard limit per HTTP request, tries per model, and total time per call (seconds)
-    gemini_timeout_s: float = 30
+    # wall-clock limit per attempt (request + hedged backup), tries per model, total per call (s)
+    gemini_timeout_s: float = 40
     gemini_max_attempts: int = 2
-    gemini_budget_s: float = 75
+    gemini_budget_s: float = 90
     # send a duplicate request when the first has not answered after this many seconds (0 = off)
     gemini_hedge_after_s: float = 6
 

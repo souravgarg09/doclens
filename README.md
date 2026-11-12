@@ -190,7 +190,7 @@ the team's approval.
 | `GEMINI_API_KEY` | — | required for questions |
 | `GEMINI_MODEL` / `GEMINI_FALLBACK_MODEL` | `gemini-3.5-flash-lite` / `gemini-3.5-flash,gemini-3.6-flash` | fallbacks (comma list, tried in order) are used when a model is rate-limited, overloaded, times out or no longer exists |
 | `GEMINI_THINKING` | `minimal` | model thinking level; higher is slower |
-| `GEMINI_TIMEOUT_S` / `GEMINI_BUDGET_S` | `30` / `75` | hard limit per request / per call including retries |
+| `GEMINI_TIMEOUT_S` / `GEMINI_BUDGET_S` | `40` / `90` | wall-clock limit per attempt (request + backup) / per call; a slow model is abandoned for the next one |
 | `GEMINI_HEDGE_AFTER_S` | `6` | send a duplicate request if no reply after this many seconds (0 = off) |
 | `GEMINI_RERANK` | `false` | `true` adds one Gemini call per question to re-score retrieved regions |
 | `TORCH_DEVICE` | `auto` | `auto` = CUDA → Apple MPS → CPU; force with `cuda`, `mps`, `cpu` |
