@@ -5,9 +5,9 @@ title Start
 
 where pwsh.exe >nul 2>nul
 if %errorlevel% equ 0 (
-    pwsh.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0start.ps1"
+    pwsh.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\windows\start.ps1"
 ) else (
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0start.ps1"
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\windows\start.ps1"
 )
 
 if %errorlevel% neq 0 (

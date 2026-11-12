@@ -28,7 +28,7 @@ if [ ! -f .env ]; then
   cp .env.example .env
   ok "Created .env from the safe template."
 fi
-if grep -Eq '^GEMINI_API_KEY=\s*$' .env; then
+if grep -Eq '^GEMINI_API_KEY=[[:space:]]*$' .env; then
   printf 'Paste your Gemini API key (from https://aistudio.google.com/apikey): '
   read -r key
   [ -n "$key" ] || fail "No key entered. Add GEMINI_API_KEY to .env and run ./setup.sh again."

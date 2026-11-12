@@ -8,9 +8,9 @@ $ErrorActionPreference = "Stop"
 
 # The product name lives in brand.json; nothing else in this script hard-codes it.
 $appName = "DocLens"
-try { $appName = (Get-Content -LiteralPath (Join-Path $PSScriptRoot "brand.json") -Raw | ConvertFrom-Json).name } catch { }
+try { $appName = (Get-Content -LiteralPath (Join-Path $PSScriptRoot "..\..\brand.json") -Raw | ConvertFrom-Json).name } catch { }
 
-$projectRoot = $PSScriptRoot
+$projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path  # scripts\windows -> project root
 $backendDir = Join-Path $projectRoot "backend"
 $frontendDir = Join-Path $projectRoot "frontend"
 $pythonExe = Join-Path $backendDir ".venv\Scripts\python.exe"
@@ -75,7 +75,7 @@ if (-not $npm) { throw "npm was not found. Install Node.js or add it to PATH." }
 
 $occupied = @(@(5173, 8000) | Where-Object { Test-TcpPort $_ })
 if ($occupied.Count -gt 0) {
-    throw "$appName is already running, or required port(s) are occupied: $($occupied -join ', '). Run .\stop.ps1 first if these are stale processes from an earlier run."
+    throw "$appName is already running, or required port(s) are occupied: $($occupied -join ', '). Run Stop.cmd first if these are stale processes from an earlier run."
 }
 
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
@@ -141,14 +141,14 @@ try {
     }
 }
 catch {
-    & (Join-Path $projectRoot "stop.ps1") -KeepInfrastructure
+    & (Join-Path $PSScriptRoot "stop.ps1") -KeepInfrastructure
     throw
 }
 
 Write-Host "$appName is ready: http://127.0.0.1:5173/" -ForegroundColor Green
 Write-Host "The worker loads its AI models in the background; the page shows when it is ready."
 Write-Host "Logs: $logDir"
-Write-Host "Stop everything later with: .\stop.ps1"
+Write-Host "Stop everything later with: Stop.cmd"
 if (-not $NoBrowser) {
     Start-Process "http://127.0.0.1:5173/"
 }

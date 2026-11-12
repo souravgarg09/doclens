@@ -31,18 +31,24 @@ Gemini is used **only** at question time. Parsing never calls a cloud model.
 
 ```text
 DocLens/
+├── Setup.cmd · Start.cmd · Stop.cmd   double-click on Windows
+├── setup.sh · start.sh · stop.sh      run on macOS (./start.sh)
+├── brand.json                         product name, tagline, logo letter
+├── docker-compose.yml                 PostgreSQL, Redis, Qdrant (bound to this computer only)
+├── .env.example                       settings template (setup copies it to .env)
 ├── backend/
 │   ├── app/            FastAPI API, database models, LangGraph agent, services
 │   ├── workers/        Redis parsing worker and the table/chart/layout parsers
 │   ├── scripts/        download_models.py, benchmark.py
-│   └── tests/          unit tests (verifier, embeddings, BM25, security guards)
+│   └── tests/          unit tests
 ├── frontend/           React + Vite + TypeScript interface
+├── scripts/windows/    PowerShell scripts behind the .cmd launchers
 ├── samples/            demonstration PDF
 ├── benchmarks/         benchmark reports (one .md + .json per run)
-├── Documents/          midterm report/synopsis and university formats
-├── docker-compose.yml  PostgreSQL, Redis, Qdrant (bound to this computer only)
-├── Setup.cmd · Start.cmd · Stop.cmd        Windows launchers
-└── setup.sh · start.sh · stop.sh       macOS / Linux launchers
+└── Documents/          Midterm/, Endterm/, University formats/
+
+Created at run time and never committed: .env (your key), backend/.venv, frontend/node_modules,
+data/ (uploads, page images, crops), .runtime/ (logs).
 ```
 
 ## Requirements
@@ -122,7 +128,7 @@ Windows 11 laptop · AMD Ryzen 5 4600H · 16 GB RAM · NVIDIA GTX 1650 (4 GB) ·
 |---|---|---|
 | Start-up until "Ready" (models loaded and warmed up) | models loaded inside the first parse | 47–62 s, once per start |
 | Parse the 10-page paper (upload → ready) | ~80 s (CPU-only PyTorch; GPU kernels untuned) | **21–30 s** |
-| Answer a question (median of 9) | often minutes or no answer (Gemini model hung, 5× retry loops) | **9.3 s** (fastest 2.2 s) |
+| Answer a question (median) | often minutes or no answer (Gemini model hung, 5× retry loops) | **5.8–9.3 s** across runs (fastest 2.2 s) |
 | Tables with real cell structure | 0 of 5 (Table Transformer crashed silently) | 5 of 5 |
 
 Where parse time goes now: chart decoding (DePlot) 11–24 s for 4 charts, layout 1.8–3.2 s,

@@ -3,7 +3,7 @@
 # Usage:  ./stop.sh   (add --keep-infrastructure to leave the Docker databases running)
 set -uo pipefail
 
-cd "$(dirname "$0")"
+cd "$(dirname "$0")" || exit 1
 PIDS=".runtime/pids"
 # The product name lives in brand.json; nothing else in this script hard-codes it.
 APP_NAME="$(sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' brand.json 2>/dev/null | head -n 1)"

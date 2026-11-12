@@ -4,7 +4,7 @@ param()
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$projectRoot = $PSScriptRoot
+$projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path  # scripts\windows -> project root
 $backendDir = Join-Path $projectRoot "backend"
 $frontendDir = Join-Path $projectRoot "frontend"
 $envFile = Join-Path $projectRoot ".env"
@@ -22,7 +22,7 @@ function Require-Command {
 
 # The product name lives in brand.json; nothing else in this script hard-codes it.
 $appName = "DocLens"
-try { $appName = (Get-Content -LiteralPath (Join-Path $PSScriptRoot "brand.json") -Raw | ConvertFrom-Json).name } catch { }
+try { $appName = (Get-Content -LiteralPath (Join-Path $PSScriptRoot "..\..\brand.json") -Raw | ConvertFrom-Json).name } catch { }
 Write-Host "$appName first-time setup" -ForegroundColor Cyan
 Write-Host "This installs dependencies inside the extracted project folder." -ForegroundColor DarkGray
 

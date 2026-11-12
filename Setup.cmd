@@ -5,9 +5,9 @@ title Setup
 
 where pwsh.exe >nul 2>nul
 if %errorlevel% equ 0 (
-    pwsh.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup.ps1"
+    pwsh.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\windows\setup.ps1"
 ) else (
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup.ps1"
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\windows\setup.ps1"
 )
 
 echo.

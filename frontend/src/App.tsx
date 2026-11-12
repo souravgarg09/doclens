@@ -40,14 +40,22 @@ export default function App() {
     setHistory(queries.queries);
   };
 
-  useEffect(() => {
-    refreshDocs().then((list) => list[0] && setSel(list[0].id)).catch((ex: Error) => setErr(ex.message));
-  }, []);
-
   // Health includes the worker heartbeat (loading models / idle / parsing / offline).
   // Poll quickly while the worker is busy or starting, slowly otherwise.
   const workerState = health?.worker?.state;
   const backendDown = health === null;
+
+  // (Re)load the document list whenever the backend becomes reachable, so a page opened
+  // while the API is still starting fills in by itself instead of staying empty.
+  useEffect(() => {
+    if (backendDown) return;
+    refreshDocs()
+      .then((list) => {
+        setErr(null);
+        setSel((current) => current ?? list[0]?.id ?? null);
+      })
+      .catch((ex: Error) => setErr(ex.message));
+  }, [backendDown]);
   useEffect(() => {
     let cancelled = false;
     const load = () => api.health().then((h) => { if (!cancelled) setHealth(h); }).catch(() => { if (!cancelled) setHealth(null); });
