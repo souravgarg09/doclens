@@ -144,7 +144,7 @@ most of the slow cases.
 What changed to get there: CUDA build of PyTorch; cuDNN auto-tuning (layout 4.6 s → 0.15 s per
 page); models preloaded and warmed up at start; fp16 disabled on GTX 16-series cards, where it
 returns empty detections; Table Transformer processor fixed for transformers ≥ 4.52; Gemini model
-switched from `gemini-3.8-flash` (no reply within 45 s) to `gemini-3.5-flash-lite` (2–3 s), with
+switched from `gemini-3.8-flash` (no reply within 45 s) to Flash-Lite models (now `gemini-3.1-flash-lite`, 1.8–3.5 s), with
 hard timeouts, two tries per model, a fallback model and hedged requests; the extra Gemini rerank
 call replaced by local hybrid SigLIP + BM25 scoring.
 
@@ -162,7 +162,7 @@ DocLens's own sample. Rule: take the newest version unless it breaks something o
 | Tables | Table Transformer v1.1-all | newest release (the repo is now archived); runs on transformers 5 with a config repair |
 | Charts | DePlot | no newer Google release; decoded in the background so it never delays "ready" |
 | Search | **SigLIP 2** base + BM25 keywords | newest SigLIP; 10/16 vs 8/16 correct regions in the top 6 on our retrieval test |
-| Answers | Gemini 3.5 Flash-Lite → 3.1 Flash-Lite → 3.6 Flash | free tier: both Flash-Lite models have their own 500 requests/day; 3.6 Flash only 20/day, so it is the last resort |
+| Answers | Gemini 3.1 Flash-Lite → 3.5 Flash-Lite → 3.6 Flash | 3.1 Flash-Lite measured fastest (1.8-3.5 s) with the most complete answers; both Lite models have their own 500/day free quota; 3.6 Flash (20/day, slow) is the last resort |
 | Runtime | torch 2.15 · transformers 5.22 · numpy 2.5 · PyMuPDF 2.1 | identical output to the old stack, chart decoding 12.2 s vs 18.1 s |
 
 Changing the embedding model is safe: each embedding model has its own vector collection and the
@@ -188,7 +188,7 @@ the team's approval.
 | Setting | Default | Meaning |
 |---|---|---|
 | `GEMINI_API_KEY` | — | required for questions |
-| `GEMINI_MODEL` / `GEMINI_FALLBACK_MODEL` | `gemini-3.5-flash-lite` / `gemini-3.1-flash-lite,gemini-3.6-flash` | fallbacks (comma list, tried in order) are used when a model is rate-limited, overloaded, times out or no longer exists |
+| `GEMINI_MODEL` / `GEMINI_FALLBACK_MODEL` | `gemini-3.1-flash-lite` / `gemini-3.5-flash-lite,gemini-3.6-flash` | fallbacks (comma list, tried in order) are used when a model is rate-limited, overloaded, times out or no longer exists |
 | `GEMINI_THINKING` | `minimal` | model thinking level; higher is slower |
 | `GEMINI_TIMEOUT_S` / `GEMINI_BUDGET_S` | `40` / `90` | wall-clock limit per attempt (request + backup) / per call; a slow model is abandoned for the next one |
 | `GEMINI_HEDGE_AFTER_S` | `0` (off) | backup request after this many seconds; leave off on the free tier (backups count against the per-minute limit and caused 429s), use `6` once billing is on |

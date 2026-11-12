@@ -57,14 +57,15 @@ class Settings(BaseSettings):
 
     # Gemini
     gemini_api_key: str = ""
-    # Chosen from the free-tier limits on AI Studio's Rate Limit page (13 Nov 2026):
-    #   3.5 Flash-Lite 15 req/min, 500/day  -> primary (~2-6 s)
-    #   3.1 Flash-Lite 15 req/min, 500/day  -> first fallback: its own quota, read our chart correctly (1-3 s)
-    #   3.6 Flash       5 req/min,  20/day  -> last resort (3.8 Flash has the same 20/day limit and stalled)
-    # "gemini-3.5-flash" has no quota row of its own, so it is not used. A model that returns
+    # Chosen by measurement on DocLens's benchmark (13 Nov 2026, same questions, each model as primary):
+    #   3.1 Flash-Lite: 1.8-3.5 s per call, 5/6 answers clean, fuller table answers  -> primary
+    #   3.5 Flash-Lite: 2.5-6.8 s per call, 4/6 clean, terser answers                -> first fallback
+    #   3.6 Flash: 7-35 s and only 20 requests/day on the free tier                 -> last resort
+    # Both Flash-Lite models have their own free-tier quota (15/min, 500/day each). "gemini-3.5-flash"
+    # has no quota row of its own and 3.8 Flash stalled, so neither is used. A model that returns
     # "not found" (retired) or 429 (quota used up) is skipped automatically.
-    gemini_model: str = "gemini-3.5-flash-lite"
-    gemini_fallback_model: str = "gemini-3.1-flash-lite,gemini-3.6-flash"
+    gemini_model: str = "gemini-3.1-flash-lite"
+    gemini_fallback_model: str = "gemini-3.5-flash-lite,gemini-3.6-flash"
     # thinking level sent to the model ("minimal", "low", "medium", "high"; empty = model default)
     gemini_thinking: str = "minimal"
     # wall-clock limit per attempt (request + hedged backup), tries per model, total per call (s)
