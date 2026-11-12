@@ -339,7 +339,10 @@ function HealthBadge({ health }: { health: Health | null }) {
   let title = "Backend offline";
   let detail = "Run Start.cmd (Windows) or ./start.sh (macOS/Linux)";
   if (health) {
-    detail = `${health.device_detail ?? health.device.toUpperCase()} · ${health.model}${health.fallback_model ? ` → ${health.fallback_model}` : ""}`;
+    const chain = [health.model, ...(health.fallback_model || "").split(",")]
+      .map((m) => m.trim().replace(/^gemini-/, ""))
+      .filter(Boolean);
+    detail = `${health.device_detail ?? health.device.toUpperCase()} · Gemini ${chain.join(" → ")}`;
     if (!health.gemini) title = "Gemini key missing";
     else if (!worker || worker.state === "offline" || worker.state === "unreachable") title = "Parsing worker offline";
     else if (worker.state === "loading") title = "Loading AI models…";
