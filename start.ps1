@@ -6,6 +6,10 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+# The product name lives in brand.json; nothing else in this script hard-codes it.
+$appName = "DocLens"
+try { $appName = (Get-Content -LiteralPath (Join-Path $PSScriptRoot "brand.json") -Raw | ConvertFrom-Json).name } catch { }
+
 $projectRoot = $PSScriptRoot
 $backendDir = Join-Path $projectRoot "backend"
 $frontendDir = Join-Path $projectRoot "frontend"
@@ -71,7 +75,7 @@ if (-not $npm) { throw "npm was not found. Install Node.js or add it to PATH." }
 
 $occupied = @(@(5173, 8000) | Where-Object { Test-TcpPort $_ })
 if ($occupied.Count -gt 0) {
-    throw "DocLens is already running, or required port(s) are occupied: $($occupied -join ', '). Run .\stop.ps1 first if these are stale DocLens processes."
+    throw "$appName is already running, or required port(s) are occupied: $($occupied -join ', '). Run .\stop.ps1 first if these are stale processes from an earlier run."
 }
 
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
@@ -104,7 +108,7 @@ while ((Get-Date) -lt $deadline -and -not ((Test-TcpPort 5432) -and (Test-TcpPor
     Start-Sleep -Milliseconds 500
 }
 if (-not ((Test-TcpPort 5432) -and (Test-TcpPort 6379) -and (Test-TcpPort 6333))) {
-    throw "Docker services did not become ready. Open Docker Desktop, start the DocLens containers, and try again."
+    throw "Docker services did not become ready. Open Docker Desktop, start the containers, and try again."
 }
 
 Write-Host "Starting API, parsing worker, and frontend (the first start after boot can take a minute)..." -ForegroundColor Cyan
@@ -141,7 +145,7 @@ catch {
     throw
 }
 
-Write-Host "DocLens is ready: http://127.0.0.1:5173/" -ForegroundColor Green
+Write-Host "$appName is ready: http://127.0.0.1:5173/" -ForegroundColor Green
 Write-Host "The worker loads its AI models in the background; the page shows when it is ready."
 Write-Host "Logs: $logDir"
 Write-Host "Stop everything later with: .\stop.ps1"

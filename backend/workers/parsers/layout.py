@@ -5,9 +5,9 @@ from huggingface_hub import hf_hub_download
 from PIL import Image
 
 from app.config import settings
-from app.device import DEVICE, USE_FP16
+from app.device import DEVICE
 
-# DocStructBench class names → DocLens region types
+# DocStructBench class names → our region types
 CLASS_MAP = {
     "title": "title", "plain text": "text", "abandon": None, "figure": "figure", "figure_caption": "text",
     "table": "table", "table_caption": "text", "table_footnote": "text", "isolate_formula": "equation", "formula_caption": "text",
@@ -23,7 +23,8 @@ def _model():
 
 def detect_layout(img: Image.Image, conf: float = 0.25) -> list[dict]:
     W, H = img.size
-    res = _model().predict(img, imgsz=1024, conf=conf, device=str(DEVICE), half=USE_FP16, verbose=False)[0]
+    # fp32 on purpose: fp16 loses every box on some GPUs (GTX 16-series) and saves little here
+    res = _model().predict(img, imgsz=1024, conf=conf, device=str(DEVICE), half=False, verbose=False)[0]
     names = res.names
     out = []
     for box, cls, score in zip(res.boxes.xyxy.tolist(), res.boxes.cls.tolist(), res.boxes.conf.tolist()):

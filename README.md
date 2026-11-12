@@ -19,7 +19,7 @@ PDF upload ─▶ FastAPI stores it and queues a Redis job
                  SigLIP embeddings ─▶ Qdrant · rows ─▶ PostgreSQL
 Question   ─▶ LangGraph agent:
                  hybrid retrieval (SigLIP vectors + BM25 keywords)
-               ─▶ rerank (priors + optional Gemini listwise)
+               ─▶ rerank (similarity + keyword + structure priors; optional Gemini)
                ─▶ context expansion (named tables/figures)
                ─▶ grounding guardrail ─▶ Gemini answer with [R id] citations
                ─▶ numeric verifier ─▶ one repair pass if a claim is unsupported
@@ -41,8 +41,8 @@ DocLens/
 ├── benchmarks/         benchmark reports (one .md + .json per run)
 ├── Documents/          midterm report/synopsis and university formats
 ├── docker-compose.yml  PostgreSQL, Redis, Qdrant (bound to this computer only)
-├── SETUP_DOCLENS.cmd · START_DOCLENS.cmd · STOP_DOCLENS.cmd     Windows
-└── setup.sh · start.sh · stop.sh                                macOS / Linux
+├── Setup.cmd · Start.cmd · Stop.cmd        Windows launchers
+└── setup.sh · start.sh · stop.sh       macOS / Linux launchers
 ```
 
 ## Requirements
@@ -58,7 +58,7 @@ DocLens/
 
 | Windows | macOS / Linux |
 |---|---|
-| Double-click `SETUP_DOCLENS.cmd` | `chmod +x *.sh && ./setup.sh` |
+| Double-click `Setup.cmd` | `chmod +x *.sh && ./setup.sh` |
 
 Setup creates `.env` (and asks for your Gemini key), creates the Python 3.12 environment inside
 `backend/.venv`, installs the right PyTorch build for the machine (CUDA for NVIDIA, MPS for
@@ -71,12 +71,12 @@ Do not copy `backend/.venv` between computers or operating systems — run setup
 
 | | Windows | macOS / Linux |
 |---|---|---|
-| Start | double-click `START_DOCLENS.cmd` | `./start.sh` |
-| Stop  | double-click `STOP_DOCLENS.cmd`  | `./stop.sh` |
+| Start | double-click `Start.cmd` | `./start.sh` |
+| Stop  | double-click `Stop.cmd`  | `./stop.sh` |
 
 Start launches Docker (if needed), the databases, the API, the parsing worker and the frontend in
 the background, then opens <http://127.0.0.1:5173/>. The badge at the top left shows the state:
-**Loading AI models…** for the first ~10–40 seconds after start, then **Ready**, and
+**Loading AI models…** for the first ~30–60 seconds after start, then **Ready**, and
 **Parsing page X of Y** while a document is processed. Stop keeps all documents and answers.
 
 Logs are in `.runtime/logs/`.
@@ -112,15 +112,55 @@ To compare two laptops fairly, run the benchmark on each one after setup has fin
 downloaded) and DocLens has started (models loaded). Setup time, model download and model
 loading are deliberately kept out of the parse numbers and reported separately.
 
-BENCHMARK_RESULTS_PLACEHOLDER
+### Measured results (12 November 2026)
+
+Windows 11 laptop · AMD Ryzen 5 4600H · 16 GB RAM · NVIDIA GTX 1650 (4 GB) · sample paper
+(10 pages, 104 regions: 74 text, 19 titles, 5 tables, 4 charts, 2 equations). Full reports are in
+`benchmarks/`.
+
+| Step | Before this overhaul | Now |
+|---|---|---|
+| Start-up until "Ready" (models loaded and warmed up) | models loaded inside the first parse | 47–62 s, once per start |
+| Parse the 10-page paper (upload → ready) | ~80 s (CPU-only PyTorch; GPU kernels untuned) | **21–30 s** |
+| Answer a question (median of 9) | often minutes or no answer (Gemini model hung, 5× retry loops) | **9.3 s** (fastest 2.2 s) |
+| Tables with real cell structure | 0 of 5 (Table Transformer crashed silently) | 5 of 5 |
+
+Where parse time goes now: chart decoding (DePlot) 11–24 s for 4 charts, layout 1.8–3.2 s,
+embeddings ~1.6–2.2 s, tables ~1–2 s, everything else under 1 s. Question time is almost entirely
+the Gemini call, whose latency varies from 2 s to 30 s for the same prompt; hedged requests cut
+most of the slow cases.
+
+What changed to get there: CUDA build of PyTorch; cuDNN auto-tuning (layout 4.6 s → 0.15 s per
+page); models preloaded and warmed up at start; fp16 disabled on GTX 16-series cards, where it
+returns empty detections; Table Transformer processor fixed for transformers ≥ 4.52; Gemini model
+switched from `gemini-3.8-flash` (no reply within 45 s) to `gemini-3.5-flash-lite` (2–3 s), with
+hard timeouts, two tries per model, a fallback model and hedged requests; the extra Gemini rerank
+call replaced by local hybrid SigLIP + BM25 scoring.
+
+These numbers are for this laptop only. They say nothing about Apple Silicon; run the benchmark
+on the Mac to get its own numbers.
+
+## Renaming the product or moving the folder
+
+- **Name:** edit `brand.json` (`name`, `tagline`, `logo_letter`) and restart. The page title,
+  sidebar, API title, launcher messages, benchmark reports and the Gemini prompt all read it.
+  Nothing else needs changing; the launchers have generic names (`Start.cmd`, `./start.sh`).
+- **Folder:** rename or move the project folder freely. Every path is computed relative to the
+  project, and setup creates a relocatable Python environment. Stop the app before renaming.
+- **Internal storage names stay fixed** (`docqa` database and queue, `regions` collection,
+  `docqa_*` Docker volumes). They are invisible to users and deliberately not tied to the
+  brand, so a rename can never orphan stored documents.
 
 ## Configuration (`.env`)
 
 | Setting | Default | Meaning |
 |---|---|---|
 | `GEMINI_API_KEY` | — | required for questions |
-| `GEMINI_MODEL` / `GEMINI_FALLBACK_MODEL` | `gemini-3.8-flash` / `gemini-3.5-flash-lite` | fallback is used when the main model is rate-limited (HTTP 429) |
-| `GEMINI_RERANK` | `true` | one extra Gemini call per question to score retrieved regions; `false` halves Gemini usage |
+| `GEMINI_MODEL` / `GEMINI_FALLBACK_MODEL` | `gemini-3.5-flash-lite` / `gemini-3.5-flash` | fallback is used when the main model is rate-limited, overloaded or times out |
+| `GEMINI_THINKING` | `minimal` | model thinking level; higher is slower |
+| `GEMINI_TIMEOUT_S` / `GEMINI_BUDGET_S` | `30` / `75` | hard limit per request / per call including retries |
+| `GEMINI_HEDGE_AFTER_S` | `6` | send a duplicate request if no reply after this many seconds (0 = off) |
+| `GEMINI_RERANK` | `false` | `true` adds one Gemini call per question to re-score retrieved regions |
 | `TORCH_DEVICE` | `auto` | `auto` = CUDA → Apple MPS → CPU; force with `cuda`, `mps`, `cpu` |
 | `CUDA_FP16` | `true` | half-precision inference on NVIDIA GPUs |
 | `PRELOAD_MODELS` | `true` | load models when the worker starts instead of on the first upload |
@@ -161,7 +201,7 @@ npx tsc --noEmit -p . && npm run build
 | Badge says **Parsing worker offline** | restart DocLens; read `.runtime/logs/worker*.log` |
 | Badge stays on **Loading AI models…** for minutes | models are still downloading — run setup again while online |
 | Document stuck in `queued` | the worker is not running (see above) |
-| Answer says model unavailable / rate limited | Gemini quota reached; wait a minute or set `GEMINI_RERANK=false` |
+| Answer says model unavailable / rate limited | Gemini quota reached or overloaded; wait a minute and ask again |
 | Port 8000 or 5173 already in use | run Stop first, then Start |
 | Apple MPS operator error | set `TORCH_DEVICE=cpu` in `.env` and restart |
 | Never run `docker compose down -v` | it erases all stored documents and vectors |

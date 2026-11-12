@@ -1,4 +1,4 @@
-"""DocLens CUDA/MPS/CPU parsing worker.
+"""CUDA/MPS/CPU parsing worker.
 
 Consumes {"document_id": N} jobs from Redis and runs the layout pipeline:
 
@@ -119,6 +119,24 @@ def preload_models() -> dict[str, float]:
         load()
         timings[name] = round(time.perf_counter() - start, 2)
         log.info("model ready: %s in %.1fs", name, timings[name])
+    # One warm-up page lets cuDNN pick its fastest kernels now instead of on the
+    # first real document (a US-Letter page rendered at 144 dpi).
+    set_worker_status({"state": "loading", "detail": "warming up the GPU"})
+    start = time.perf_counter()
+    with Image.new("RGB", (int(8.5 * settings.render_dpi), int(11 * settings.render_dpi)), "white") as blank:
+        layout.detect_layout(blank)
+        with torch.inference_mode():
+            # chart decoder: the first generate() call pays ~6 s of kernel selection
+            chart_proc, chart_model = charts._model()
+            chart_inputs = chart_proc(images=blank.resize((600, 400)), text="Generate underlying data table of the figure below:",
+                                      return_tensors="pt").to(DEVICE)
+            chart_model.generate(**chart_inputs, max_new_tokens=4)
+            # table structure model
+            table_proc, table_model = tables._model()
+            table_model(**table_proc(images=blank.resize((800, 400)), return_tensors="pt").to(DEVICE))
+    _sync_device()
+    timings["warm-up"] = round(time.perf_counter() - start, 2)
+    log.info("warm-up done in %.1fs", timings["warm-up"])
     return timings
 
 
@@ -271,6 +289,10 @@ async def _process(doc_id: int) -> None:
                 log.info("doc %s page %s/%s → %s regions so far (%.1fs)",
                          doc_id, page_no, n_pages, len(rows), time.perf_counter() - t0)
 
+            if not rows:
+                # Never report an empty index as "ready": questions would silently fail.
+                raise RuntimeError("No regions were detected on any page. The PDF may be empty or image-only, "
+                                   "or the layout model failed on this device (try TORCH_DEVICE=cpu).")
             await _set_progress(doc_id, "indexing", n_pages, n_pages)
             with timer.stage("vector_upsert"):
                 for i in range(0, len(points), 128):

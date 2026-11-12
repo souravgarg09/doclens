@@ -6,6 +6,10 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+# The product name lives in brand.json; nothing else in this script hard-codes it.
+$appName = "DocLens"
+try { $appName = (Get-Content -LiteralPath (Join-Path $PSScriptRoot "brand.json") -Raw | ConvertFrom-Json).name } catch { }
+
 $projectRoot = $PSScriptRoot
 $pidFile = Join-Path $projectRoot ".runtime\pids.json"
 
@@ -21,7 +25,7 @@ if (Test-Path -LiteralPath $pidFile) {
     Remove-Item -LiteralPath $pidFile -Force
 }
 else {
-    Write-Host "No DocLens PID file was found; application processes may already be stopped."
+    Write-Host "No PID file was found; application processes may already be stopped."
 }
 
 if (-not $KeepInfrastructure) {
@@ -41,4 +45,4 @@ if (-not $KeepInfrastructure) {
     }
 }
 
-Write-Host "DocLens is stopped." -ForegroundColor Green
+Write-Host "$appName is stopped." -ForegroundColor Green

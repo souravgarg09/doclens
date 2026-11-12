@@ -1,7 +1,7 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-title Stop DocLens
+title Stop
 
 where pwsh.exe >nul 2>nul
 if %errorlevel% equ 0 (

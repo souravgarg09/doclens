@@ -1,16 +1,27 @@
+import json
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-# config.py is located at:
-# DocLens/backend/app/config.py
+# Every path is derived from this file's location (<project>/backend/app/config.py),
+# so the project folder can be renamed or moved without changing any code.
 APP_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = APP_DIR.parent
 PROJECT_DIR = BACKEND_DIR.parent
 
+# The product name lives in one place: <project>/brand.json. The API title, the
+# health endpoint, the frontend and the model prompt all read it from there.
+_BRAND_FILE = PROJECT_DIR / "brand.json"
+_BRAND_DEFAULTS = {"name": "DocLens", "tagline": "Grounded answers from visual PDFs", "logo_letter": "D"}
+try:
+    BRAND: dict[str, str] = {**_BRAND_DEFAULTS, **json.loads(_BRAND_FILE.read_text(encoding="utf-8"))}
+except (OSError, ValueError):
+    BRAND = dict(_BRAND_DEFAULTS)
+APP_NAME = BRAND["name"]
+
 # Prefer backend/.env if it exists.
-# Otherwise, use DocLens/.env.
+# Otherwise, use <project>/.env.
 BACKEND_ENV_FILE = BACKEND_DIR / ".env"
 PROJECT_ENV_FILE = PROJECT_DIR / ".env"
 
@@ -30,21 +41,34 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    # Database and queues
+    # Database and queues.
+    # The "docqa" identifiers below are internal storage keys (database, queue,
+    # collection). They are deliberately neutral and independent of the product name in
+    # brand.json: renaming the product must never change them, or stored data is orphaned.
     database_url: str = (
-        "postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/figuremind"
+        "postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/docqa"
     )
     redis_url: str = "redis://127.0.0.1:6379/0"
-    parse_queue: str = "figuremind:parse"
+    parse_queue: str = "docqa:parse"
 
     # Vector database
     qdrant_url: str = "http://127.0.0.1:6333"
-    qdrant_collection: str = "figuremind_regions"
+    qdrant_collection: str = "regions"
 
     # Gemini
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-3.8-flash"
-    gemini_fallback_model: str = "gemini-3.5-flash-lite"
+    # Measured 12 Nov 2026 with this project's key: 3.5-flash-lite answered in 1.7 s,
+    # 3.5-flash in ~14 s with minimal thinking, 3.8/3.7-flash did not answer within 45 s.
+    gemini_model: str = "gemini-3.5-flash-lite"
+    gemini_fallback_model: str = "gemini-3.5-flash"
+    # thinking level sent to the model ("minimal", "low", "medium", "high"; empty = model default)
+    gemini_thinking: str = "minimal"
+    # hard limit per HTTP request, tries per model, and total time per call (seconds)
+    gemini_timeout_s: float = 30
+    gemini_max_attempts: int = 2
+    gemini_budget_s: float = 75
+    # send a duplicate request when the first has not answered after this many seconds (0 = off)
+    gemini_hedge_after_s: float = 6
 
     # Storage
     storage_dir: str = "./data"
@@ -78,7 +102,8 @@ class Settings(BaseSettings):
     # hybrid retrieval: weight of the lexical (BM25) ranking fused with SigLIP vectors
     lexical_weight: float = 1.0
     # ask Gemini to score the retrieved regions before answering (one extra API call per question)
-    gemini_rerank: bool = True
+    # Off by default: the local hybrid SigLIP+BM25 scoring ranks well and this halves Gemini calls.
+    gemini_rerank: bool = False
 
     # API
     api_host: str = "0.0.0.0"

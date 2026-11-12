@@ -1,7 +1,7 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-title DocLens Launcher
+title Start
 
 where pwsh.exe >nul 2>nul
 if %errorlevel% equ 0 (
@@ -12,7 +12,7 @@ if %errorlevel% equ 0 (
 
 if %errorlevel% neq 0 (
     echo.
-    echo DocLens could not start. Read the message above, then press any key.
+    echo The application could not start. Read the message above, then press any key.
     pause >nul
 )
 endlocal

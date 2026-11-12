@@ -1,0 +1,344 @@
+{
+  "started_at": "2026-11-12T20:13:27",
+  "machine": {
+    "host": "Sourav",
+    "os": "Windows 11",
+    "arch": "AMD64",
+    "python": "3.12.16",
+    "cpu": "AMD64 Family 23 Model 96 Stepping 1, AuthenticAMD",
+    "ram_gb": 15.4,
+    "cpu_cores": 6
+  },
+  "health": {
+    "ok": true,
+    "app": {
+      "name": "DocLens",
+      "tagline": "Grounded answers from visual PDFs",
+      "logo_letter": "D"
+    },
+    "gemini": true,
+    "model": "gemini-3.5-flash-lite",
+    "fallback_model": "gemini-3.5-flash",
+    "device": "cuda",
+    "device_detail": "CUDA \u00b7 NVIDIA GeForce GTX 1650 \u00b7 fp32",
+    "gemini_rerank": false,
+    "worker": {
+      "state": "idle",
+      "at": 1794494605.9395442,
+      "queued_jobs": 0
+    }
+  },
+  "pdf": "muscle-hypertrophy-meta-analysis.pdf",
+  "worker_wait_s": 0.04,
+  "runs": [
+    {
+      "run": 1,
+      "parse": {
+        "document_id": 5,
+        "status": "ready",
+        "error": null,
+        "upload_to_ready_s": 21.29,
+        "parse_stats": {
+          "stages": {
+            "render": 0.728,
+            "index_setup": 0.257,
+            "layout": 3.137,
+            "text": 0.162,
+            "embeddings": 2.15,
+            "tables": 2.119,
+            "equations": 0.001,
+            "charts": 11.2,
+            "vector_upsert": 0.123
+          },
+          "counts": {
+            "render": 1,
+            "index_setup": 1,
+            "layout": 10,
+            "text": 104,
+            "embeddings": 10,
+            "tables": 5,
+            "equations": 2,
+            "charts": 4,
+            "vector_upsert": 1
+          },
+          "total_seconds": 20.72,
+          "pages": 10,
+          "regions": 104,
+          "region_types": {
+            "title": 19,
+            "text": 74,
+            "table": 5,
+            "equation": 2,
+            "chart": 4
+          },
+          "seconds_per_page": 2.072,
+          "device": "CUDA \u00b7 NVIDIA GeForce GTX 1650 \u00b7 fp32",
+          "platform": "Windows AMD64",
+          "torch": "2.6.0+cu126"
+        }
+      },
+      "answers": [
+        {
+          "question": "How many studies were included in the meta-analysis?",
+          "seconds": 9.26,
+          "status": "answered",
+          "verification": "skipped",
+          "citations": 1,
+          "steps_ms": {
+            "parse": 14,
+            "retrieve": 448,
+            "rerank": 1,
+            "expand": 13,
+            "answer": 8723,
+            "verify": 0
+          },
+          "quota_or_unavailable": false,
+          "answer": "The meta-analysis consisted of 8 studies [R502]."
+        },
+        {
+          "question": "What was the effect size difference between multiple sets and single sets for hypertrophy?",
+          "seconds": 31.75,
+          "status": "answered",
+          "verification": "consistent",
+          "citations": 1,
+          "steps_ms": {
+            "parse": 13,
+            "retrieve": 130,
+            "rerank": 0,
+            "expand": 12,
+            "answer": 31553,
+            "verify": 2
+          },
+          "quota_or_unavailable": false,
+          "answer": "Hypertrophy-related effect sizes (ESs) were 40% greater with multiple sets compared with single sets [R514]."
+        },
+        {
+          "question": "What does Table 1 report?",
+          "seconds": 14.39,
+          "status": "answered",
+          "verification": "skipped",
+          "citations": 1,
+          "steps_ms": {
+            "parse": 12,
+            "retrieve": 125,
+            "rerank": 0,
+            "expand": 17,
+            "answer": 14186,
+            "verify": 1
+          },
+          "quota_or_unavailable": false,
+          "answer": "TABLE 1 reports studies included in the analysis [R440]."
+        }
+      ]
+    },
+    {
+      "run": 2,
+      "parse": {
+        "document_id": 6,
+        "status": "ready",
+        "error": null,
+        "upload_to_ready_s": 29.56,
+        "parse_stats": {
+          "stages": {
+            "render": 0.754,
+            "index_setup": 0.037,
+            "layout": 1.84,
+            "text": 0.167,
+            "embeddings": 1.576,
+            "tables": 0.978,
+            "equations": 0.001,
+            "charts": 23.032,
+            "vector_upsert": 0.127
+          },
+          "counts": {
+            "render": 1,
+            "index_setup": 1,
+            "layout": 10,
+            "text": 104,
+            "embeddings": 10,
+            "tables": 5,
+            "equations": 2,
+            "charts": 4,
+            "vector_upsert": 1
+          },
+          "total_seconds": 29.287,
+          "pages": 10,
+          "regions": 104,
+          "region_types": {
+            "title": 19,
+            "text": 74,
+            "table": 5,
+            "equation": 2,
+            "chart": 4
+          },
+          "seconds_per_page": 2.929,
+          "device": "CUDA \u00b7 NVIDIA GeForce GTX 1650 \u00b7 fp32",
+          "platform": "Windows AMD64",
+          "torch": "2.6.0+cu126"
+        }
+      },
+      "answers": [
+        {
+          "question": "How many studies were included in the meta-analysis?",
+          "seconds": 2.19,
+          "status": "answered",
+          "verification": "skipped",
+          "citations": 1,
+          "steps_ms": {
+            "parse": 13,
+            "retrieve": 50,
+            "rerank": 1,
+            "expand": 12,
+            "answer": 2074,
+            "verify": 0
+          },
+          "quota_or_unavailable": false,
+          "answer": "The meta-analysis consisted of 8 studies [R606]."
+        },
+        {
+          "question": "What was the effect size difference between multiple sets and single sets for hypertrophy?",
+          "seconds": 9.8,
+          "status": "answered",
+          "verification": "consistent",
+          "citations": 2,
+          "steps_ms": {
+            "parse": 10,
+            "retrieve": 90,
+            "rerank": 0,
+            "expand": 10,
+            "answer": 9647,
+            "verify": 0
+          },
+          "quota_or_unavailable": false,
+          "answer": "Based on the regression coefficients for multiple sets per exercise, the effect size (ES) difference between multiple sets and single sets for hypertrophy is 0.10 +/- 0.04 [R562]. Additionally, hypertrophy-related effect sizes were 40% greater with multiple sets compared to single sets [R618]."
+        },
+        {
+          "question": "What does Table 1 report?",
+          "seconds": 2.98,
+          "status": "answered",
+          "verification": "skipped",
+          "citations": 1,
+          "steps_ms": {
+            "parse": 11,
+            "retrieve": 133,
+            "rerank": 0,
+            "expand": 13,
+            "answer": 2778,
+            "verify": 1
+          },
+          "quota_or_unavailable": false,
+          "answer": "Table 1 reports studies included in the analysis [R544]."
+        }
+      ]
+    },
+    {
+      "run": 3,
+      "parse": {
+        "document_id": 7,
+        "status": "ready",
+        "error": null,
+        "upload_to_ready_s": 30.14,
+        "parse_stats": {
+          "stages": {
+            "render": 0.742,
+            "index_setup": 0.019,
+            "layout": 1.892,
+            "text": 0.17,
+            "embeddings": 1.617,
+            "tables": 0.903,
+            "equations": 0.001,
+            "charts": 23.678,
+            "vector_upsert": 0.156
+          },
+          "counts": {
+            "render": 1,
+            "index_setup": 1,
+            "layout": 10,
+            "text": 104,
+            "embeddings": 10,
+            "tables": 5,
+            "equations": 2,
+            "charts": 4,
+            "vector_upsert": 1
+          },
+          "total_seconds": 30.027,
+          "pages": 10,
+          "regions": 104,
+          "region_types": {
+            "title": 19,
+            "text": 74,
+            "table": 5,
+            "equation": 2,
+            "chart": 4
+          },
+          "seconds_per_page": 3.003,
+          "device": "CUDA \u00b7 NVIDIA GeForce GTX 1650 \u00b7 fp32",
+          "platform": "Windows AMD64",
+          "torch": "2.6.0+cu126"
+        }
+      },
+      "answers": [
+        {
+          "question": "How many studies were included in the meta-analysis?",
+          "seconds": 5.77,
+          "status": "flagged",
+          "verification": "citation_gap",
+          "citations": 1,
+          "steps_ms": {
+            "parse": 15,
+            "retrieve": 61,
+            "rerank": 0,
+            "expand": 17,
+            "answer": 5623,
+            "verify": 1
+          },
+          "quota_or_unavailable": false,
+          "answer": "The analysis consisted of 8 studies."
+        },
+        {
+          "question": "What was the effect size difference between multiple sets and single sets for hypertrophy?",
+          "seconds": 23.46,
+          "status": "answered",
+          "verification": "consistent",
+          "citations": 1,
+          "steps_ms": {
+            "parse": 12,
+            "retrieve": 146,
+            "rerank": 0,
+            "expand": 11,
+            "answer": 23241,
+            "verify": 0
+          },
+          "quota_or_unavailable": false,
+          "answer": "Hypertrophy-related effect sizes (ESs) were 40% greater with multiple sets compared with single sets [R722]."
+        },
+        {
+          "question": "What does Table 1 report?",
+          "seconds": 6.02,
+          "status": "answered",
+          "verification": "skipped",
+          "citations": 1,
+          "steps_ms": {
+            "parse": 13,
+            "retrieve": 159,
+            "rerank": 0,
+            "expand": 24,
+            "answer": 5777,
+            "verify": 0
+          },
+          "quota_or_unavailable": false,
+          "answer": "Table 1 reports the studies included in the analysis [R648]."
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "parse_median_s": 29.56,
+    "parse_min_s": 21.29,
+    "parse_max_s": 30.14,
+    "question_median_s": 9.26,
+    "answered": 8,
+    "questions": 9,
+    "quota_errors": 0
+  }
+}

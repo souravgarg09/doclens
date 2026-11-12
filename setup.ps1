@@ -20,7 +20,10 @@ function Require-Command {
     return $command
 }
 
-Write-Host "DocLens first-time setup" -ForegroundColor Cyan
+# The product name lives in brand.json; nothing else in this script hard-codes it.
+$appName = "DocLens"
+try { $appName = (Get-Content -LiteralPath (Join-Path $PSScriptRoot "brand.json") -Raw | ConvertFrom-Json).name } catch { }
+Write-Host "$appName first-time setup" -ForegroundColor Cyan
 Write-Host "This installs dependencies inside the extracted project folder." -ForegroundColor DarkGray
 
 $uv = Get-Command "uv.exe" -ErrorAction SilentlyContinue
@@ -68,7 +71,8 @@ Push-Location $backendDir
 try {
     if (-not (Test-Path -LiteralPath $pythonExe)) {
         if ($uv) {
-            & $uv.Source venv .venv --python 3.12
+            # --relocatable keeps the environment working if the project folder is renamed or moved
+            & $uv.Source venv .venv --python 3.12 --relocatable
         }
         else {
             & $systemPythonExe @systemPythonArgs -m venv .venv
@@ -105,4 +109,4 @@ finally {
 }
 
 Write-Host "Setup complete." -ForegroundColor Green
-Write-Host "You can now double-click START_DOCLENS.cmd."
+Write-Host "You can now double-click Start.cmd."

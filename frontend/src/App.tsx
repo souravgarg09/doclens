@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type Answer, type Citation, type Doc, type Health, type ParseStats, type Region } from "./api";
 import { CitationOverlay, TYPE_COLORS } from "./components/CitationOverlay";
 
+const BRAND = __BRAND__;
+
 type BusyState = "upload" | "ask" | "document" | "history" | null;
 
 export default function App() {
@@ -210,7 +212,7 @@ export default function App() {
   return (
     <div className="layout">
       <aside className="panel sidebar">
-        <div className="brand"><span className="logo">D</span><div><h1>DocLens</h1><small>Grounded intelligence for visual PDFs</small></div></div>
+        <div className="brand"><span className="logo">{BRAND.logo_letter}</span><div><h1>{BRAND.name}</h1><small>{BRAND.tagline}</small></div></div>
         <HealthBadge health={health} />
 
         <form onSubmit={upload} className="upload">
@@ -232,7 +234,7 @@ export default function App() {
           ))}
           {!docs.length && <li className="list-empty">No documents yet</li>}
         </ul>
-        <small className="sidebar-note">Use <b>START_DOCLENS.cmd</b> and <b>STOP_DOCLENS.cmd</b>. Runtime logs are saved automatically.</small>
+        <small className="sidebar-note">Start and stop with <b>Start.cmd</b> / <b>Stop.cmd</b> (Windows) or <b>./start.sh</b> / <b>./stop.sh</b>. Logs are in <code>.runtime/logs</code>.</small>
       </aside>
 
       <main>
@@ -250,7 +252,7 @@ export default function App() {
             )}
             {selectedRegion && <div className="card region-detail"><div className="row"><b style={{ color: TYPE_COLORS[selectedRegion.type] }}>R{selectedRegion.id} · {selectedRegion.type}</b><small>page {selectedRegion.page}</small><button className="icon-button" aria-label="Close region details" onClick={() => setSelectedRegion(null)}>×</button></div><pre>{selectedRegion.content || "No extracted text for this visual region."}</pre>{selectedRegion.structured && <details><summary>Structured extraction</summary><pre className="dim">{JSON.stringify(selectedRegion.structured, null, 2).slice(0, 3000)}</pre></details>}</div>}
           </>
-        ) : <div className="empty-state welcome"><span className="empty-icon">D</span><h2>Explore evidence, not guesses</h2><p>Upload a PDF to detect its visual regions, ask questions, and jump directly to cited evidence.</p></div>}
+        ) : <div className="empty-state welcome"><span className="empty-icon">{BRAND.logo_letter}</span><h2>Explore evidence, not guesses</h2><p>Upload a PDF to detect its visual regions, ask questions, and jump directly to cited evidence.</p></div>}
       </main>
 
       <aside className="panel answer-panel">
@@ -327,7 +329,7 @@ function HealthBadge({ health }: { health: Health | null }) {
   const worker = health?.worker;
   let tone = "warn";
   let title = "Backend offline";
-  let detail = "Start DocLens with START_DOCLENS.cmd or ./start.sh";
+  let detail = "Run Start.cmd (Windows) or ./start.sh (macOS/Linux)";
   if (health) {
     detail = `${health.device_detail ?? health.device.toUpperCase()} · ${health.model}${health.fallback_model ? ` → ${health.fallback_model}` : ""}`;
     if (!health.gemini) title = "Gemini key missing";
@@ -372,7 +374,7 @@ function progressPercent(item: Doc) {
 
 function parsingMessage(item: Doc, health: Health | null) {
   if (health?.worker?.state === "loading") return "The worker is still loading its AI models; parsing starts as soon as they are ready.";
-  if (health && (!health.worker || health.worker.state === "offline")) return "The parsing worker is not running. Restart DocLens to process this document.";
+  if (health && (!health.worker || health.worker.state === "offline")) return `The parsing worker is not running. Restart ${BRAND.name} to process this document.`;
   const progress = item.progress;
   if (!progress || item.status === "queued") return "Waiting for the parsing worker…";
   if (progress.stage === "rendering") return "Rendering pages…";

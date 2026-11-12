@@ -1,9 +1,10 @@
-"""DocLens API — FastAPI + Uvicorn.
+"""HTTP API (FastAPI + Uvicorn). The product name comes from brand.json.
 
 Run:  uvicorn app.main:app --reload --port 8000
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import shutil
 import time
@@ -19,21 +20,30 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .agents.graph import run_agent
-from .config import PROJECT_DIR, settings
+from .config import APP_NAME, BRAND, PROJECT_DIR, settings
 from .db import Document, Query, Region, get_session, init_db
 from .device import DEVICE, describe as describe_device
 from .queue import enqueue_parse, get_worker_status
 
-log = logging.getLogger("doclens.api")
+log = logging.getLogger("api")
+# Show our own INFO logs (Gemini fallbacks, hedged requests, model timings) next to uvicorn's.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+for noisy in ("httpx", "httpcore", "google_genai", "urllib3"):
+    logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await init_db()
+    # Load the SigLIP text encoder in the background so the first question does not pay
+    # ~5 s of model loading; the API answers health checks immediately meanwhile.
+    from .services import embeddings
+    warmup = asyncio.create_task(asyncio.to_thread(embeddings.embed_text, ["warm-up"]))
     yield
+    warmup.cancel()
 
 
-app = FastAPI(title="DocLens API", version="0.3.0", lifespan=lifespan)
+app = FastAPI(title=f"{APP_NAME} API", version="0.3.0", lifespan=lifespan)
 _ALLOWED_ORIGINS = {origin.strip().rstrip("/") for origin in settings.cors_origins.split(",") if origin.strip()}
 app.add_middleware(
     CORSMiddleware,
@@ -48,7 +58,7 @@ async def reject_cross_site_writes(request, call_next):
     """CSRF guard: a browser always sends Origin on cross-site POST/DELETE requests.
 
     Requests without an Origin header (curl, the benchmark script) are allowed; a
-    request from any web page other than the DocLens frontend is refused, so a
+    request from any web page other than our own frontend is refused, so a
     malicious site open in the same browser cannot upload or delete documents.
     """
     if request.method in ("POST", "PUT", "PATCH", "DELETE"):
@@ -71,7 +81,7 @@ def _doc(d: Document) -> dict:
 
 @app.get("/api/health")
 async def health():
-    return {"ok": True, "gemini": bool(settings.gemini_api_key), "model": settings.gemini_model,
+    return {"ok": True, "app": BRAND, "gemini": bool(settings.gemini_api_key), "model": settings.gemini_model,
             "fallback_model": settings.gemini_fallback_model, "device": DEVICE.type,
             "device_detail": describe_device(), "gemini_rerank": settings.gemini_rerank,
             "worker": await get_worker_status()}

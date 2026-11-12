@@ -24,7 +24,19 @@ def get_device() -> torch.device:
 
 
 DEVICE = get_device()
-USE_FP16 = DEVICE.type == "cuda" and settings.cuda_fp16
+# GTX 16-series cards (Turing TU116/TU117) return NaN/empty results in float16: on a
+# GTX 1650 the layout detector found 0 regions in fp16 and the correct 16/15/5 regions
+# per page in fp32. Half precision is therefore disabled on those cards.
+_FP16_BROKEN_GPUS = ("GTX 16",)
+CUDA_NAME = torch.cuda.get_device_name(0) if DEVICE.type == "cuda" else ""
+USE_FP16 = (DEVICE.type == "cuda" and settings.cuda_fp16
+            and not any(marker in CUDA_NAME for marker in _FP16_BROKEN_GPUS))
+
+if DEVICE.type == "cuda":
+    # Let cuDNN benchmark convolution algorithms once per input shape and keep the fastest.
+    # Measured on a GTX 1650: layout detection 4.6 s → 0.15 s per page. Page renders share
+    # one size, so the one-off tuning cost is paid only on the first page.
+    torch.backends.cudnn.benchmark = True
 
 if DEVICE.type == "cpu":
     # Use every physical core for intra-op parallelism; PyTorch sometimes picks fewer on Windows.
@@ -41,7 +53,7 @@ def autocast():
 def describe() -> str:
     """Human-readable device name for the health endpoint and logs."""
     if DEVICE.type == "cuda":
-        return f"CUDA · {torch.cuda.get_device_name(0)}{' · fp16' if USE_FP16 else ''}"
+        return f"CUDA · {CUDA_NAME} · {'fp16' if USE_FP16 else 'fp32'}"
     if DEVICE.type == "mps":
         return "Apple MPS"
     return f"CPU · {torch.get_num_threads()} threads"

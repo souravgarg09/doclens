@@ -1,6 +1,6 @@
-"""End-to-end DocLens benchmark: parse a PDF, ask questions, record where time goes.
+"""End-to-end benchmark: parse a PDF, ask questions, record where time goes.
 
-Start DocLens first (START_DOCLENS.cmd or ./start.sh), then from backend/:
+Start the application first (Start.cmd or ./start.sh), then from backend/:
 
     python -m scripts.benchmark                      # sample PDF, 3 runs
     python -m scripts.benchmark --runs 5 --pdf ../samples/other.pdf -q "Question 1?" -q "Question 2?"
@@ -114,7 +114,7 @@ def summarise(runs: list[dict[str, Any]]) -> dict[str, Any]:
 
 def to_markdown(report: dict[str, Any]) -> str:
     m, h, s = report["machine"], report["health"], report["summary"]
-    lines = [f"# DocLens benchmark — {report['started_at']}", "",
+    lines = [f"# {h.get('app', {}).get('name', 'DocLens')} benchmark — {report['started_at']}", "",
              f"- Machine: {m['host']} · {m['os']} · {m['arch']} · {m.get('cpu')} · RAM {m.get('ram_gb', '?')} GB",
              f"- Device: {h.get('device_detail', h.get('device'))} · Gemini {h.get('model')} (fallback {h.get('fallback_model')})"
              f" · Gemini rerank {'on' if h.get('gemini_rerank') else 'off'}",

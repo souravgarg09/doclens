@@ -1,4 +1,4 @@
-"""Download every model DocLens uses into the shared Hugging Face cache.
+"""Download every model the application uses into the shared Hugging Face cache.
 
 Run once during setup (or before a demo) so that the first parse does not wait for
 roughly 2 GB of downloads:

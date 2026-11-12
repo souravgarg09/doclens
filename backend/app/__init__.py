@@ -1,2 +1,2 @@
-"""DocLens backend package."""
+"""Backend package: API, agent and services."""
 

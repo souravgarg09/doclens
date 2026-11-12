@@ -18,7 +18,11 @@ from app.services.verifier import extract_numbers
 
 @lru_cache(maxsize=1)
 def _model():
-    proc = AutoImageProcessor.from_pretrained(settings.table_model)
+    # The model's saved processor config only has {"longest_edge": 1000}; transformers ≥ 4.52
+    # rejects that and every table failed silently. Give it the DETR-style pair explicitly
+    # (shortest side 800 px, longest side capped at 1000 px, as the TATR authors resize).
+    proc = AutoImageProcessor.from_pretrained(settings.table_model,
+                                              size={"shortest_edge": 800, "longest_edge": 1000})
     model = TableTransformerForObjectDetection.from_pretrained(settings.table_model).to(DEVICE).eval()
     return proc, model
 

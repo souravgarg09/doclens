@@ -1,4 +1,4 @@
-"""LangGraph orchestration for DocLens.
+"""LangGraph orchestration of the question-answering agent.
 
     parse ─▶ retrieve ─▶ rerank ─▶ expand ─▶ (guardrail) ─▶ answer ─▶ verify ─▶ END
                                                  │                       │
@@ -20,7 +20,7 @@ from typing import Any, Literal, TypedDict
 from langgraph.graph import END, StateGraph
 from sqlalchemy import select
 
-from ..config import settings
+from ..config import APP_NAME, settings
 from ..db import Document, Query, Region, SessionLocal
 from ..services import gemini
 from ..services.gemini import GeminiUnavailable
@@ -223,14 +223,14 @@ async def refuse_node(state: AgentState) -> AgentState:
     return {"answer": msg, "cited_ids": [], "status": "refused", "trace": _t(state, "guardrail", f"REFUSED grounding {g:.2f}", t0)}
 
 
-SYSTEM = """You are DocLens, a document-intelligence reasoner. Answer ONLY from the provided regions.
+SYSTEM = f"""You are {APP_NAME}, a document-intelligence reasoner. Answer ONLY from the provided regions.
 Tables, charts and equations are given BOTH as extracted text AND as images. If the extracted text is
 incomplete or garbled, READ THE IMAGE — it is the ground truth. Do not refuse if the value is visible in the image.
 Every factual sentence must end with citations like [R123] or [R123] [R456] using the region ids.
 Never combine multiple ids inside one bracket. When reading tables/charts,
 quote the exact cell/point values you use and show any arithmetic.
-Only if none of the regions (text or images) contain the answer, return {"answer": "", "cited_region_ids": [], "confidence": 0}.
-Return JSON: {"answer": string, "cited_region_ids": number[], "confidence": number 0-1}."""
+Only if none of the regions (text or images) contain the answer, return {{"answer": "", "cited_region_ids": [], "confidence": 0}}.
+Return JSON: {{"answer": string, "cited_region_ids": number[], "confidence": number 0-1}}."""
 
 ANSWER_SCHEMA = {
     "type": "object",

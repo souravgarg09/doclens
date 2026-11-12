@@ -4,7 +4,9 @@
 # Every port is bound to 127.0.0.1, so the databases are reachable only from this
 # computer, never from the local network. The Postgres credentials below are
 # therefore local-development defaults; change them before exposing anything.
-name: doclens
+# Internal Compose project name and storage names: independent of the product name
+# in brand.json, so renaming the product never orphans existing data.
+name: docqa
 services:
   postgres:
     image: pgvector/pgvector:0.8.6-pg16-bookworm
@@ -12,11 +14,11 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: figuremind
+      POSTGRES_DB: docqa
     ports: ["127.0.0.1:5432:5432"]
     volumes: ["pgdata:/var/lib/postgresql/data"]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d figuremind"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d docqa"]
       interval: 3s
       timeout: 3s
       retries: 20
@@ -30,8 +32,5 @@ services:
     ports: ["127.0.0.1:6333:6333", "127.0.0.1:6334:6334"]
     volumes: ["qdrant:/qdrant/storage"]
 volumes:
-  # Names are pinned so data created before the FigureMind -> DocLens rename is kept.
-  pgdata:
-    name: figuremind_pgdata
-  qdrant:
-    name: figuremind_qdrant
+  pgdata:   # stored as docqa_pgdata
+  qdrant:   # stored as docqa_qdrant
