@@ -162,7 +162,7 @@ DocLens's own sample. Rule: take the newest version unless it breaks something o
 | Tables | Table Transformer v1.1-all | newest release (the repo is now archived); runs on transformers 5 with a config repair |
 | Charts | DePlot | no newer Google release; decoded in the background so it never delays "ready" |
 | Search | **SigLIP 2** base + BM25 keywords | newest SigLIP; 10/16 vs 8/16 correct regions in the top 6 on our retrieval test |
-| Answers | Gemini 3.5 Flash-Lite → 3.6 Flash | fastest reliable model with our key; the stable Flash model as fallback |
+| Answers | Gemini 3.5 Flash-Lite → 3.5 Flash → 3.6 Flash | fastest model first, the fast Flash next, the officially stable Flash as the last safety net |
 | Runtime | torch 2.15 · transformers 5.22 · numpy 2.5 · PyMuPDF 2.1 | identical output to the old stack, chart decoding 12.2 s vs 18.1 s |
 
 Changing the embedding model is safe: each embedding model has its own vector collection and the
@@ -188,7 +188,7 @@ the team's approval.
 | Setting | Default | Meaning |
 |---|---|---|
 | `GEMINI_API_KEY` | — | required for questions |
-| `GEMINI_MODEL` / `GEMINI_FALLBACK_MODEL` | `gemini-3.5-flash-lite` / `gemini-3.6-flash` | fallback is used when the main model is rate-limited, overloaded, times out or no longer exists |
+| `GEMINI_MODEL` / `GEMINI_FALLBACK_MODEL` | `gemini-3.5-flash-lite` / `gemini-3.5-flash,gemini-3.6-flash` | fallbacks (comma list, tried in order) are used when a model is rate-limited, overloaded, times out or no longer exists |
 | `GEMINI_THINKING` | `minimal` | model thinking level; higher is slower |
 | `GEMINI_TIMEOUT_S` / `GEMINI_BUDGET_S` | `30` / `75` | hard limit per request / per call including retries |
 | `GEMINI_HEDGE_AFTER_S` | `6` | send a duplicate request if no reply after this many seconds (0 = off) |

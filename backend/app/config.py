@@ -57,12 +57,13 @@ class Settings(BaseSettings):
 
     # Gemini
     gemini_api_key: str = ""
-    # Measured 12 Nov 2026 with this project's key: 3.5-flash-lite answered in ~2 s (primary).
-    # Fallback: gemini-3.6-flash, the stable Flash model on Google's official model list
-    # (7-35 s); 3.8/3.7-flash did not answer within 45 s. A model that returns "not found"
-    # is skipped automatically, so a retired model can never break questions.
+    # Measured 12 Nov 2026 with this project's key: 3.5-flash-lite ~2 s (primary);
+    # fallbacks tried in order: 3.5-flash (1.9-7.4 s; available to the key but not on Google's
+    # public model page) then 3.6-flash (7.5-35 s; the stable Flash model on that page).
+    # 3.8/3.7-flash did not answer within 45 s. A model that returns "not found" (retired)
+    # is skipped automatically.
     gemini_model: str = "gemini-3.5-flash-lite"
-    gemini_fallback_model: str = "gemini-3.6-flash"
+    gemini_fallback_model: str = "gemini-3.5-flash,gemini-3.6-flash"
     # thinking level sent to the model ("minimal", "low", "medium", "high"; empty = model default)
     gemini_thinking: str = "minimal"
     # hard limit per HTTP request, tries per model, and total time per call (seconds)

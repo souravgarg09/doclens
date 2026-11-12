@@ -90,10 +90,12 @@ def _classify(e: Exception) -> str:
 
 
 def _models() -> list[str]:
-    models = [settings.gemini_model]
-    fallback = settings.gemini_fallback_model.strip()
-    if fallback and fallback not in models:
-        models.append(fallback)
+    """Primary model, then the fallbacks in order (GEMINI_FALLBACK_MODEL may be a comma list)."""
+    models = [settings.gemini_model.strip()]
+    for name in settings.gemini_fallback_model.split(","):
+        name = name.strip()
+        if name and name not in models:
+            models.append(name)
     return models
 
 

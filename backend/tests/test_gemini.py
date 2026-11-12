@@ -116,6 +116,20 @@ class MissingModelTests(unittest.TestCase):
                          [c.kwargs["model"] for c in fake.interactions.create.call_args_list])
 
 
+class FallbackChainTests(unittest.TestCase):
+    def test_comma_separated_fallbacks_are_tried_in_order(self) -> None:
+        fake = Mock()
+        fake.interactions.create.side_effect = [RateLimited("429"), NotFound("404"), SimpleNamespace(output_text="ok")]
+        with (
+            patch.object(gemini, "client", return_value=fake),
+            patch.object(settings, "gemini_model", "lite"),
+            patch.object(settings, "gemini_fallback_model", "fast, stable"),
+        ):
+            self.assertEqual("ok", gemini.generate(["q"]))
+        self.assertEqual(["lite", "fast", "stable"],
+                         [c.kwargs["model"] for c in fake.interactions.create.call_args_list])
+
+
 class NotFound(Exception):
     code = 404
 
