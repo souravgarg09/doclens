@@ -57,13 +57,14 @@ class Settings(BaseSettings):
 
     # Gemini
     gemini_api_key: str = ""
-    # Measured 12 Nov 2026 with this project's key: 3.5-flash-lite ~2 s (primary);
-    # fallbacks tried in order: 3.5-flash (1.9-7.4 s; available to the key but not on Google's
-    # public model page) then 3.6-flash (7.5-35 s; the stable Flash model on that page).
-    # 3.8/3.7-flash did not answer within 45 s. A model that returns "not found" (retired)
-    # is skipped automatically.
+    # Chosen from the free-tier limits on AI Studio's Rate Limit page (13 Nov 2026):
+    #   3.5 Flash-Lite 15 req/min, 500/day  -> primary (~2-6 s)
+    #   3.1 Flash-Lite 15 req/min, 500/day  -> first fallback: its own quota, read our chart correctly (1-3 s)
+    #   3.6 Flash       5 req/min,  20/day  -> last resort (3.8 Flash has the same 20/day limit and stalled)
+    # "gemini-3.5-flash" has no quota row of its own, so it is not used. A model that returns
+    # "not found" (retired) or 429 (quota used up) is skipped automatically.
     gemini_model: str = "gemini-3.5-flash-lite"
-    gemini_fallback_model: str = "gemini-3.5-flash,gemini-3.6-flash"
+    gemini_fallback_model: str = "gemini-3.1-flash-lite,gemini-3.6-flash"
     # thinking level sent to the model ("minimal", "low", "medium", "high"; empty = model default)
     gemini_thinking: str = "minimal"
     # wall-clock limit per attempt (request + hedged backup), tries per model, total per call (s)

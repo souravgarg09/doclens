@@ -162,7 +162,7 @@ DocLens's own sample. Rule: take the newest version unless it breaks something o
 | Tables | Table Transformer v1.1-all | newest release (the repo is now archived); runs on transformers 5 with a config repair |
 | Charts | DePlot | no newer Google release; decoded in the background so it never delays "ready" |
 | Search | **SigLIP 2** base + BM25 keywords | newest SigLIP; 10/16 vs 8/16 correct regions in the top 6 on our retrieval test |
-| Answers | Gemini 3.5 Flash-Lite → 3.5 Flash → 3.6 Flash | fastest model first, the fast Flash next, the officially stable Flash as the last safety net |
+| Answers | Gemini 3.5 Flash-Lite → 3.1 Flash-Lite → 3.6 Flash | free tier: both Flash-Lite models have their own 500 requests/day; 3.6 Flash only 20/day, so it is the last resort |
 | Runtime | torch 2.15 · transformers 5.22 · numpy 2.5 · PyMuPDF 2.1 | identical output to the old stack, chart decoding 12.2 s vs 18.1 s |
 
 Changing the embedding model is safe: each embedding model has its own vector collection and the
@@ -188,7 +188,7 @@ the team's approval.
 | Setting | Default | Meaning |
 |---|---|---|
 | `GEMINI_API_KEY` | — | required for questions |
-| `GEMINI_MODEL` / `GEMINI_FALLBACK_MODEL` | `gemini-3.5-flash-lite` / `gemini-3.5-flash,gemini-3.6-flash` | fallbacks (comma list, tried in order) are used when a model is rate-limited, overloaded, times out or no longer exists |
+| `GEMINI_MODEL` / `GEMINI_FALLBACK_MODEL` | `gemini-3.5-flash-lite` / `gemini-3.1-flash-lite,gemini-3.6-flash` | fallbacks (comma list, tried in order) are used when a model is rate-limited, overloaded, times out or no longer exists |
 | `GEMINI_THINKING` | `minimal` | model thinking level; higher is slower |
 | `GEMINI_TIMEOUT_S` / `GEMINI_BUDGET_S` | `40` / `90` | wall-clock limit per attempt (request + backup) / per call; a slow model is abandoned for the next one |
 | `GEMINI_HEDGE_AFTER_S` | `0` (off) | backup request after this many seconds; leave off on the free tier (backups count against the per-minute limit and caused 429s), use `6` once billing is on |
@@ -223,8 +223,9 @@ npx tsc --noEmit -p . && npm run build
 - The numeric verifier checks that numbers in the answer match extracted values or simple
   arithmetic on them. A `consistent` result does not prove the answer is correct in every
   respect (wrong series or unit can still match).
-- Gemini's free tier has per-minute and per-day limits. Each question uses one or two calls
-  (plus one repair call when verification fails).
+- Gemini's free tier has per-minute and per-day limits (13 Nov 2026: Flash-Lite models 15/min and
+  500/day each; Flash models 5/min and 20/day). Each question uses one call, plus one repair call
+  when verification fails. AI Studio → Rate Limit shows the live numbers.
 
 ## Troubleshooting
 
