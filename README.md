@@ -8,9 +8,6 @@ against the values extracted from the PDF. It also reads the PDF's **hidden link
 numbers that jump to the reference list, "see Table 2" jumps, and words linked to URLs or DOIs,
 so it can answer "which paper is reference 11?" and show where each citation points.
 
-B.Tech CSE major project, Amity University Punjab — Vidushi Chauhan, Anmol Sharma, Sourav Garg ·
-supervisor Dr. Vishwanath Bijalwan.
-
 ```text
 PDF upload ─▶ FastAPI stores it and queues a Redis job
             ─▶ parsing worker (all local, no cloud calls):
@@ -52,7 +49,7 @@ DocLens/
 
 Created at run time and never committed: .env (your key), backend/.venv, frontend/node_modules,
 data/ (uploads, page images, crops), .runtime/ (logs). Also kept out of git: PDFs in samples/
-(research papers are copyrighted) and the team's Documents/ folder (reports, university formats).
+(research papers are copyrighted) and any local Documents/ folder.
 ```
 
 ## Requirements
@@ -261,3 +258,7 @@ npx tsc --noEmit -p . && npm run build
 | Port 8000 or 5173 already in use | run Stop first, then Start |
 | Apple MPS operator error | set `TORCH_DEVICE=cpu` in `.env` and restart |
 | Never run `docker compose down -v` | it erases all stored documents and vectors |
+
+## Authors
+
+Vidushi Chauhan · Anmol Sharma · Sourav Garg
