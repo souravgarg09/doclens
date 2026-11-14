@@ -261,4 +261,4 @@ npx tsc --noEmit -p . && npm run build
 
 ## Authors
 
-Vidushi Chauhan · Anmol Sharma · Sourav Garg
+Sourav Garg
