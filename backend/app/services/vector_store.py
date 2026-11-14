@@ -1,10 +1,11 @@
 """Per-document region index stored in Qdrant.
 
-Vectors from different embedding models are not comparable, so each embedding model
-gets its own collection: "<QDRANT_COLLECTION>__<model slug>". Changing SIGLIP_MODEL
-therefore never mixes old and new vectors; the worker re-parses documents that have
-no vectors for the current model (see parse_worker.reindex_stale_documents) and
-removes collections left over from previous models.
+Each region point has up to two named vectors: "visual" (SigLIP 2, image + text) and
+"text" (the text embedder). Vectors from different embedding models are not comparable,
+so each model combination gets its own collection: "<QDRANT_COLLECTION>__<models slug>".
+Changing SIGLIP_MODEL or TEXT_EMBED_MODEL therefore never mixes old and new vectors; the
+worker re-parses documents that have no vectors in the current collection (see
+parse_worker.reindex_stale_documents) and removes collections left over from earlier models.
 """
 import re
 from typing import Any
@@ -24,16 +25,28 @@ def client() -> QdrantClient:
     return _client
 
 
+VISUAL, TEXT = "visual", "text"
+
+
+def _slug(model: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", model.lower()).strip("_")
+
+
 def collection_name() -> str:
-    slug = re.sub(r"[^a-z0-9]+", "_", settings.siglip_model.lower()).strip("_")
-    return f"{settings.qdrant_collection}__{slug}"
+    name = f"{settings.qdrant_collection}__{_slug(settings.siglip_model)}"
+    if settings.text_embed_model.strip():
+        name += f"__{_slug(settings.text_embed_model.split('/')[-1])}"
+    return name
 
 
-def ensure_collection(dim: int) -> None:
+def ensure_collection(visual_dim: int, text_dim: int | None = None) -> None:
     c = client()
     name = collection_name()
     if not c.collection_exists(name):
-        c.create_collection(name, vectors_config=qm.VectorParams(size=dim, distance=qm.Distance.COSINE))
+        vectors = {VISUAL: qm.VectorParams(size=visual_dim, distance=qm.Distance.COSINE)}
+        if text_dim:
+            vectors[TEXT] = qm.VectorParams(size=text_dim, distance=qm.Distance.COSINE)
+        c.create_collection(name, vectors_config=vectors)
         c.create_payload_index(name, "document_id", qm.PayloadSchemaType.INTEGER)
 
 
@@ -58,7 +71,8 @@ def count_document(document_id: int) -> int:
     return int(c.count(name, count_filter=flt, exact=True).count)
 
 
-def upsert_regions(points: list[tuple[int, list[float], dict[str, Any]]]) -> None:
+def upsert_regions(points: list[tuple[int, dict[str, list[float]], dict[str, Any]]]) -> None:
+    """points: (region id, {"visual": [...], "text": [...]}, payload)."""
     client().upsert(collection_name(),
                     points=[qm.PointStruct(id=pid, vector=vec, payload=payload) for pid, vec, payload in points])
 
@@ -72,7 +86,8 @@ def delete_document(document_id: int) -> None:
         must=[qm.FieldCondition(key="document_id", match=qm.MatchValue(value=document_id))])))
 
 
-def search(document_id: int, vector: list[float], limit: int, types: list[str] | None = None) -> list[dict[str, Any]]:
+def search(document_id: int, vector: list[float], limit: int, types: list[str] | None = None,
+           using: str = VISUAL) -> list[dict[str, Any]]:
     c = client()
     name = collection_name()
     if not c.collection_exists(name):
@@ -80,5 +95,6 @@ def search(document_id: int, vector: list[float], limit: int, types: list[str] |
     must: list[Any] = [qm.FieldCondition(key="document_id", match=qm.MatchValue(value=document_id))]
     if types:
         must.append(qm.FieldCondition(key="type", match=qm.MatchAny(any=types)))
-    hits = c.query_points(name, query=vector, query_filter=qm.Filter(must=must), limit=limit, with_payload=True).points
+    hits = c.query_points(name, query=vector, using=using, query_filter=qm.Filter(must=must), limit=limit,
+                          with_payload=True).points
     return [{"region_id": int(h.id), "score": float(h.score), **(h.payload or {})} for h in hits]

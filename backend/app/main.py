@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .agents.graph import run_agent
 from .config import APP_NAME, BRAND, PROJECT_DIR, settings
-from .db import Document, Query, Region, get_session, init_db
+from .db import Document, Link, Query, Region, get_session, init_db
 from .device import DEVICE, describe as describe_device
 from .queue import enqueue_parse, get_worker_status
 
@@ -35,12 +35,17 @@ for noisy in ("httpx", "httpcore", "google_genai", "urllib3"):
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await init_db()
-    # Load the SigLIP text encoder in the background so the first question does not pay
-    # ~5 s of model loading; the API answers health checks immediately meanwhile.
+    # Load the question encoders (SigLIP + text embedder) in the background so the first question
+    # does not pay ~5 s of model loading; the API answers health checks immediately meanwhile.
     from .services import embeddings
     if settings.api_embed_on_cpu:
         embeddings.use_cpu()  # keep GPU memory for the parsing worker
-    warmup = asyncio.create_task(asyncio.to_thread(embeddings.embed_text, ["warm-up"]))
+    def _warm() -> None:
+        embeddings.embed_text(["warm-up"])
+        if embeddings.text_enabled():
+            embeddings.embed_query("warm-up")
+
+    warmup = asyncio.create_task(asyncio.to_thread(_warm))
     yield
     warmup.cancel()
 
@@ -143,6 +148,15 @@ async def get_document(doc_id: int, session: AsyncSession = Depends(get_session)
         raise HTTPException(404, "not found")
     regions = (await session.execute(select(Region).where(Region.document_id == doc_id).order_by(Region.page, Region.id))).scalars().all()
     return {"document": _doc(doc), "regions": [r.as_dict() for r in regions]}
+
+
+@app.get("/api/documents/{doc_id}/links")
+async def get_links(doc_id: int, session: AsyncSession = Depends(get_session)):
+    """The PDF's embedded hyperlinks and its numbered reference list."""
+    if not await session.get(Document, doc_id):
+        raise HTTPException(404, "not found")
+    rows = (await session.execute(select(Link).where(Link.document_id == doc_id).order_by(Link.page, Link.id))).scalars().all()
+    return {"links": [r.as_dict() for r in rows]}
 
 
 @app.delete("/api/documents/{doc_id}")

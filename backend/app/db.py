@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Any, AsyncIterator
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -56,6 +56,38 @@ class Region(Base):
         return result
 
 
+class Link(Base):
+    """A hyperlink embedded in the PDF, or one entry of its numbered reference list.
+
+    kind: citation|table|figure|equation|section|footnote|page|internal|url|doi|email
+          (a link the reader can click), or "reference" (a reference-list entry; label
+          is its number). bbox / target_bbox are normalized page coordinates like Region.bbox.
+    inferred: the link was not in the PDF's link layer but read from a citation marker
+          such as "(11)" in the text, matched to reference 11.
+    """
+    __tablename__ = "links"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(20))
+    page: Mapped[int] = mapped_column(Integer)
+    bbox: Mapped[list[float]] = mapped_column(JSON)
+    text: Mapped[str] = mapped_column(Text, default="")
+    label: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    uri: Mapped[str | None] = mapped_column(Text, nullable=True)
+    target_page: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    target_bbox: Mapped[list[float] | None] = mapped_column(JSON, nullable=True)
+    target_text: Mapped[str] = mapped_column(Text, default="")
+    region_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # region the link sits in
+    target_region_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # region it points to
+    inferred: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"id": self.id, "kind": self.kind, "page": self.page, "bbox": self.bbox, "text": self.text,
+                "label": self.label, "uri": self.uri, "target_page": self.target_page,
+                "target_bbox": self.target_bbox, "target_text": self.target_text, "region_id": self.region_id,
+                "target_region_id": self.target_region_id, "inferred": self.inferred}
+
+
 class Query(Base):
     __tablename__ = "queries"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -80,6 +112,9 @@ _MIGRATIONS = (
 
 async def init_db() -> None:
     async with engine.begin() as conn:
+        # The API and the worker start together; without a lock both may try to create a
+        # new table at the same moment and one fails ("links_id_seq already exists").
+        await conn.exec_driver_sql("SELECT pg_advisory_xact_lock(7461001)")
         await conn.run_sync(Base.metadata.create_all)
         for statement in _MIGRATIONS:
             await conn.exec_driver_sql(statement)

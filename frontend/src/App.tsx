@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, type Answer, type Citation, type Doc, type Health, type ParseStats, type Region } from "./api";
-import { CitationOverlay, TYPE_COLORS } from "./components/CitationOverlay";
+import { api, type Answer, type Citation, type Doc, type Health, type ParseStats, type PdfLink, type Region } from "./api";
+import { CitationOverlay, LINK_COLORS, TYPE_COLORS, linkSummary } from "./components/CitationOverlay";
 
 const BRAND = __BRAND__;
 
@@ -12,6 +12,9 @@ export default function App() {
   const [sel, setSel] = useState<number | null>(null);
   const [doc, setDoc] = useState<Doc | null>(null);
   const [regions, setRegions] = useState<Region[]>([]);
+  const [links, setLinks] = useState<PdfLink[]>([]);
+  const [showLinks, setShowLinks] = useState(true);
+  const [flash, setFlash] = useState<PdfLink["bbox"] | null>(null);
   const [page, setPage] = useState(1);
   const [showAll, setShowAll] = useState(true);
   const [highlighted, setHighlighted] = useState<number[]>([]);
@@ -33,10 +36,11 @@ export default function App() {
 
   const loadDoc = async (id: number) => {
     const sequence = ++loadSequence.current;
-    const [detail, queries] = await Promise.all([api.getDoc(id), api.queries(id)]);
+    const [detail, queries, linkList] = await Promise.all([api.getDoc(id), api.queries(id), api.links(id).catch(() => ({ links: [] as PdfLink[] }))]);
     if (sequence !== loadSequence.current) return;
     setDoc(detail.document);
     setRegions(detail.regions);
+    setLinks(linkList.links);
     setHistory(queries.queries);
   };
 
@@ -208,6 +212,37 @@ export default function App() {
     setHighlighted(answer.citations.map((citation) => citation.region_id));
     if (answer.citations[0]) setPage(answer.citations[0].page);
   };
+  // Follow a PDF link: web addresses open in a new tab, internal links jump to their target.
+  const followLink = (link: PdfLink) => {
+    if (link.uri) {
+      if (/^(https?:|mailto:)/i.test(link.uri)) window.open(link.uri, "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (!link.target_page) return;
+    setPage(link.target_page);
+    setHighlighted(link.target_region_id ? [link.target_region_id] : []);
+    setFlash(link.target_bbox);
+    const target = regions.find((region) => region.id === link.target_region_id);
+    if (target) setSelectedRegion(target);
+  };
+  useEffect(() => {
+    if (!flash) return;
+    const timer = window.setTimeout(() => setFlash(null), 2400);
+    return () => window.clearTimeout(timer);
+  }, [flash]);
+  const pageLinks = useMemo(() => links.filter((link) => link.page === page && link.kind !== "reference"), [links, page]);
+  const linkCount = useMemo(() => links.filter((link) => link.kind !== "reference").length, [links]);
+  const referenceCount = useMemo(() => links.filter((link) => link.kind === "reference").length, [links]);
+  const regionLinks = useMemo(() => {
+    if (!selectedRegion) return [];
+    const seen = new Set<string>();
+    return links.filter((link) => link.region_id === selectedRegion.id && link.kind !== "reference").filter((link) => {
+      const key = `${link.kind}|${link.label}|${link.uri}|${link.target_page}|${link.target_text.slice(0, 60)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [links, selectedRegion]);
   const goto = (citation: Citation) => {
     setPage(citation.page);
     setHighlighted([citation.region_id]);
@@ -252,13 +287,14 @@ export default function App() {
               <div className="document-title"><small>DOCUMENT</small><h2 title={doc.title}>{doc.title}</h2></div>
               <div className="page-controls"><button aria-label="Previous page" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>‹</button><code>{page} / {doc.pages || "?"}</code><button aria-label="Next page" disabled={page >= doc.pages} onClick={() => setPage((value) => Math.min(doc.pages || value + 1, value + 1))}>›</button></div>
               <label className="toggle"><input type="checkbox" checked={showAll} onChange={(event) => setShowAll(event.target.checked)} /> show regions</label>
+              {linkCount > 0 && <label className="toggle" title="Hyperlinks inside the PDF: citations, figure/table jumps, URLs"><input type="checkbox" checked={showLinks} onChange={(event) => setShowLinks(event.target.checked)} /> show links</label>}
               <button className="secondary" disabled={!highlighted.length} onClick={() => { setHighlighted([]); setSelectedRegion(null); }}>Clear highlight</button>
             </div>
-            <div className="stats">{Object.entries(stats).map(([type, count]) => <span key={type} style={{ borderColor: TYPE_COLORS[type], color: TYPE_COLORS[type] }}>{type} {count}</span>)}{doc.status !== "ready" && <em>{doc.status === "failed" ? doc.error : "Parsing document…"}</em>}{doc.status === "ready" && doc.progress?.stage === "charts" && <span className="enriching" role="status">Reading chart values{doc.progress.pages ? ` ${Math.max(1, doc.progress.page)}/${doc.progress.pages}` : ""}… you can already ask questions</span>}{doc.status === "ready" && doc.parse_stats && <ParseReport stats={doc.parse_stats} />}</div>
-            {doc.status === "ready" ? <CitationOverlay src={api.pageUrl(doc.id, page)} regions={regions.filter((region) => region.page === page)} highlighted={highlighted} showAll={showAll} onSelect={(region) => { setSelectedRegion(region); setHighlighted([region.id]); }} /> : (
+            <div className="stats">{Object.entries(stats).map(([type, count]) => <span key={type} style={{ borderColor: TYPE_COLORS[type], color: TYPE_COLORS[type] }}>{type} {count}</span>)}{linkCount > 0 && <span className="links-chip" title="Hyperlinks read from the PDF (citations, figure/table jumps, URLs and DOIs)">links {linkCount}</span>}{referenceCount > 0 && <span className="links-chip" title="Entries read from the numbered reference list">references {referenceCount}</span>}{doc.status !== "ready" && <em>{doc.status === "failed" ? doc.error : "Parsing document…"}</em>}{doc.status === "ready" && doc.progress?.stage === "charts" && <span className="enriching" role="status">Reading chart values{doc.progress.pages ? ` ${Math.max(1, doc.progress.page)}/${doc.progress.pages}` : ""}… you can already ask questions</span>}{doc.status === "ready" && doc.parse_stats && <ParseReport stats={doc.parse_stats} />}</div>
+            {doc.status === "ready" ? <CitationOverlay src={api.pageUrl(doc.id, page)} regions={regions.filter((region) => region.page === page)} highlighted={highlighted} showAll={showAll} onSelect={(region) => { setSelectedRegion(region); setHighlighted([region.id]); }} links={pageLinks} showLinks={showLinks} onFollow={followLink} flash={flash} /> : (
               <div className={`empty-state ${doc.status}`}><span className="empty-icon">{doc.status === "failed" ? "!" : "↻"}</span><h3>{doc.status === "failed" ? "Parsing failed" : "Building the region index"}</h3><p>{doc.status === "failed" ? doc.error : parsingMessage(doc, health)}</p>{doc.status !== "failed" && <div className="parse-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPercent(doc)}><span style={{ width: `${Math.max(4, progressPercent(doc))}%` }} /></div>}{doc.status === "failed" && <button className="primary" disabled={busy !== null} onClick={() => void reparseDocument(doc)}>Retry parsing</button>}</div>
             )}
-            {selectedRegion && <div className="card region-detail"><div className="row"><b style={{ color: TYPE_COLORS[selectedRegion.type] }}>R{selectedRegion.id} · {selectedRegion.type}</b><small>page {selectedRegion.page}</small><button className="icon-button" aria-label="Close region details" onClick={() => setSelectedRegion(null)}>×</button></div><pre>{selectedRegion.content || "No extracted text for this visual region."}</pre>{selectedRegion.structured && <details><summary>Structured extraction</summary><pre className="dim">{JSON.stringify(selectedRegion.structured, null, 2).slice(0, 3000)}</pre></details>}</div>}
+            {selectedRegion && <div className="card region-detail"><div className="row"><b style={{ color: TYPE_COLORS[selectedRegion.type] }}>R{selectedRegion.id} · {selectedRegion.type}</b><small>page {selectedRegion.page}</small><button className="icon-button" aria-label="Close region details" onClick={() => setSelectedRegion(null)}>×</button></div><pre>{selectedRegion.content || "No extracted text for this visual region."}</pre>{regionLinks.length > 0 && <div className="region-links"><small>Links in this region</small><ul>{regionLinks.slice(0, 20).map((link) => <li key={link.id}><button className="link-row" onClick={() => followLink(link)} title={linkSummary(link)}><span className="link-kind" style={{ color: LINK_COLORS[link.kind] ?? "#94a3b8" }}>{link.kind === "citation" && link.label ? `[${link.label}]` : link.kind}</span><span className="link-target">{link.uri ?? (link.target_text || `page ${link.target_page}`)}</span></button></li>)}</ul></div>}{selectedRegion.structured && <details><summary>Structured extraction</summary><pre className="dim">{JSON.stringify(selectedRegion.structured, null, 2).slice(0, 3000)}</pre></details>}</div>}
           </>
         ) : <div className="empty-state welcome"><span className="empty-icon">{BRAND.logo_letter}</span><h2>Explore evidence, not guesses</h2><p>Upload a PDF to detect its visual regions, ask questions, and jump directly to cited evidence.</p></div>}
       </main>

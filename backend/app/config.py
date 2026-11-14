@@ -100,6 +100,12 @@ class Settings(BaseSettings):
     # SigLIP 2 (Feb 2025): same size and API as SigLIP; 10/16 vs 8/16 correct regions in the
     # top 6 on our retrieval test (hybrid with BM25).
     siglip_model: str = "google/siglip2-base-patch16-224"
+    # Text embedder for what a region SAYS (SigLIP reads only 64 tokens and is weak on
+    # paragraphs). Snowflake arctic-embed-s: 33M parameters, 512 tokens, Apache-2.0, no custom
+    # code. Retrieval is SigLIP 2 (looks) + this (says) + BM25 (exact words), rank-fused.
+    # Empty = SigLIP 2 + BM25 only.
+    text_embed_model: str = "Snowflake/snowflake-arctic-embed-s"
+    text_query_prefix: str = "Represent this sentence for searching relevant passages: "
     table_model: str = (
         "microsoft/table-transformer-structure-recognition-v1.1-all"
     )
@@ -116,6 +122,8 @@ class Settings(BaseSettings):
     max_verify_attempts: int = 2
     # hybrid retrieval: weight of the lexical (BM25) ranking fused with SigLIP vectors
     lexical_weight: float = 1.0
+    # weight of SigLIP 2's ranking of tables/charts/figures/equations in the fusion (0 = off)
+    visual_weight: float = 0.25
     # ask Gemini to score the retrieved regions before answering (one extra API call per question)
     # Off by default: the local hybrid SigLIP+BM25 scoring ranks well and this halves Gemini calls.
     gemini_rerank: bool = False

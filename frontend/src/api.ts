@@ -1,7 +1,8 @@
 export type BBox = [number, number, number, number]; // x0,y0,x1,y1 normalized 0..1
 export type Region = { id: number; page: number; type: string; bbox: BBox; content: string; structured: Record<string, unknown> | null; confidence: number };
+export type PdfLink = { id: number; kind: string; page: number; bbox: BBox; text: string; label: string | null; uri: string | null; target_page: number | null; target_bbox: BBox | null; target_text: string; region_id: number | null; target_region_id: number | null; inferred: boolean };
 export type ParseProgress = { stage: string; page: number; pages: number };
-export type ParseStats = { stages: Record<string, number>; counts: Record<string, number>; total_seconds: number; charts_seconds?: number; enriched_seconds?: number; pages: number; regions: number; region_types: Record<string, number>; seconds_per_page: number; device: string; platform: string };
+export type ParseStats = { stages: Record<string, number>; counts: Record<string, number>; total_seconds: number; charts_seconds?: number; enriched_seconds?: number; pages: number; regions: number; region_types: Record<string, number>; seconds_per_page: number; device: string; platform: string; links?: number; references?: number };
 export type Doc = { id: number; title: string; pages: number; status: string; error: string | null; created_at?: string | null; progress?: ParseProgress | null; parse_stats?: ParseStats | null };
 export type Citation = { region_id: number; page: number; type: string; bbox: BBox; score: number; snippet: string };
 export type Verification = { status: string; summary: string; checks: { claim: string; value: number; matched: boolean; evidence?: string; recomputed?: number | null; note?: string }[] };
@@ -33,5 +34,6 @@ export const api = {
   deleteQuery: (id: number) => fetch(`${BASE}/api/queries/${id}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
   clearQueries: (id: number) => fetch(`${BASE}/api/documents/${id}/queries`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),
   ask: (document_id: number, question: string) => fetch(`${BASE}/api/ask`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ document_id, question }) }).then((r) => j<{ result: Answer }>(r)),
+  links: (id: number) => fetch(`${BASE}/api/documents/${id}/links`).then((r) => j<{ links: PdfLink[] }>(r)),
   pageUrl: (id: number, page: number) => `${BASE}/api/documents/${id}/pages/${page}.png`,
 };

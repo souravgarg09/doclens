@@ -7,6 +7,7 @@ Consumes {"document_id": N} jobs from Redis and runs the layout pipeline:
         ├─ figure   ─▶ DePlot             ─▶ series / axes / units (chart) or caption (figure)
         ├─ equation ─▶ pix2tex            ─▶ LaTeX (optional dependency)
         └─ text     ─▶ PyMuPDF text in bbox
+  PDF link layer ─▶ citations, figure/table jumps, URLs/DOIs + the numbered reference list
        ─▶ SigLIP region embeddings ─▶ Qdrant (per-document region index) + Postgres rows
 
 No cloud model is called while parsing: every step above runs locally.
@@ -59,12 +60,12 @@ from PIL import Image  # noqa: E402
 from sqlalchemy import delete, update  # noqa: E402
 
 from app.config import settings  # noqa: E402
-from app.db import Document, Region, SessionLocal, init_db  # noqa: E402
+from app.db import Document, Link, Region, SessionLocal, init_db  # noqa: E402
 from app.device import DEVICE, describe as describe_device  # noqa: E402
 from app.queue import blocking_pop, set_worker_status  # noqa: E402
 from app.services import embeddings, vector_store  # noqa: E402
 from app.services.verifier import extract_numbers  # noqa: E402
-from workers.parsers import charts, equations, layout, tables  # noqa: E402
+from workers.parsers import charts, equations, layout, links, tables  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("parse_worker")
@@ -116,6 +117,8 @@ def preload_models() -> dict[str, float]:
     loaders = {
         "layout (DocLayout-YOLO)": layout._model,
         "embeddings (SigLIP)": embeddings._load,
+        **({f"text embeddings ({settings.text_embed_model.split('/')[-1]})": embeddings._load_text}
+           if embeddings.text_enabled() else {}),
         "tables (Table Transformer)": tables._model,
         "charts (DePlot)": charts._model,
     }
@@ -166,6 +169,18 @@ def text_in_bbox(page: pymupdf.Page, bbox: list[float]) -> str:
     return page.get_text("text", clip=clip).strip()
 
 
+def _region_vectors(items: list[tuple[Image.Image | None, str, str]]) -> list[dict[str, list[float]]]:
+    """Named vectors for regions given as (crop or None, type, content):
+    "visual" = SigLIP 2 of image + text, "text" = the text embedder on the full content."""
+    visual = embeddings.embed_regions([(crop, f"{rtype}: {(content or '')[:600]}") for crop, rtype, content in items],
+                                      batch_size=settings.embedding_batch_size)
+    if not embeddings.text_enabled():
+        return [{vector_store.VISUAL: v} for v in visual]
+    text = embeddings.embed_passages([f"{rtype}: {content or ''}" for _, rtype, content in items],
+                                     batch_size=settings.embedding_batch_size)
+    return [{vector_store.VISUAL: v, vector_store.TEXT: t} for v, t in zip(visual, text)]
+
+
 async def _set_progress(doc_id: int, stage: str, page: int, pages: int) -> None:
     """Publish progress in its own short transaction so the UI sees it immediately."""
     set_worker_status({"state": "parsing", "stage": stage, "document_id": doc_id, "page": page, "pages": pages})
@@ -191,11 +206,15 @@ async def _decode_charts(doc_id: int, chart_ids: list[int], stats: dict[str, Any
                     crop = source.convert("RGB")
                 structured = charts.decode_chart(crop)
                 _sync_device()
+                if not structured.pop("is_chart", True):
+                    # no data table came out: a diagram or picture, kept as a figure (image + caption)
+                    region.type = "figure"
+                    structured = {"caption": caption, "not_a_chart": True}
                 content = (structured.get("table_text", "") + "\n" + caption).strip()
                 structured["numbers"] = extract_numbers(content)
-                vector = embeddings.embed_regions([(crop, f"chart: {content[:600]}")], batch_size=1)[0]
+                vector = _region_vectors([(crop, region.type, content)])[0]
                 vector_store.upsert_regions([(region.id, vector,
-                                              {"document_id": doc_id, "page": region.page, "type": "chart"})])
+                                              {"document_id": doc_id, "page": region.page, "type": region.type})])
                 crop.close()
             except Exception as e:  # noqa: BLE001 - keep the caption-only region if decoding fails
                 log.warning("chart decoding failed for region %s: %s", region_id, e)
@@ -249,7 +268,8 @@ async def _process(doc_id: int) -> None:
             pdf, pages = render_pages(pdf_path, doc_id)
         n_pages = len(pages)
         with timer.stage("index_setup"):
-            vector_store.ensure_collection(embeddings.dim())
+            vector_store.ensure_collection(embeddings.dim(),
+                                           embeddings.text_dim() if embeddings.text_enabled() else None)
             vector_store.delete_document(doc_id)
         crops_dir = settings.crops_dir / str(doc_id)
         crops_dir.mkdir(parents=True, exist_ok=True)
@@ -260,6 +280,7 @@ async def _process(doc_id: int) -> None:
         region_counts: dict[str, int] = defaultdict(int)
 
         async with SessionLocal() as s:
+            await s.execute(delete(Link).where(Link.document_id == doc_id))
             await s.execute(delete(Region).where(Region.document_id == doc_id))
             for page_no, png, fpage in pages:
                 await _set_progress(doc_id, "analysing", page_no, n_pages)
@@ -330,11 +351,8 @@ async def _process(doc_id: int) -> None:
                         await s.flush()  # assign all page region IDs in one database round trip
                         try:
                             with timer.stage("embeddings"):
-                                vectors = embeddings.embed_regions(
-                                    [(crop, f"{region.type}: {region.content[:600]}")
-                                     for region, crop in page_regions],
-                                    batch_size=settings.embedding_batch_size,
-                                )
+                                vectors = _region_vectors(
+                                    [(crop, region.type, region.content) for region, crop in page_regions])
                             points.extend(
                                 (region.id, vector,
                                  {"document_id": doc_id, "page": page_no, "type": region.type})
@@ -353,6 +371,17 @@ async def _process(doc_id: int) -> None:
                 # Never report an empty index as "ready": questions would silently fail.
                 raise RuntimeError("No regions were detected on any page. The PDF may be empty or image-only, "
                                    "or the layout model failed on this device (try TORCH_DEVICE=cpu).")
+            link_count = 0
+            with timer.stage("links"):
+                try:
+                    link_rows = links.build_link_rows(pdf, [{"id": r.id, "page": r.page, "type": r.type, "bbox": r.bbox,
+                                                             "content": r.content} for r in rows])
+                    s.add_all(Link(document_id=doc_id, **row) for row in link_rows)
+                    link_count = sum(1 for row in link_rows if row["kind"] != "reference")
+                    reference_count = len(link_rows) - link_count
+                except Exception:  # noqa: BLE001 - links are an extra; never fail the parse over them
+                    log.exception("doc %s: reading the PDF's links failed", doc_id)
+                    reference_count = 0
             await _set_progress(doc_id, "indexing", n_pages, n_pages)
             with timer.stage("vector_upsert"):
                 for i in range(0, len(points), 128):
@@ -365,6 +394,8 @@ async def _process(doc_id: int) -> None:
                 "regions": len(rows),
                 "region_types": dict(region_counts),
                 "duplicates_removed": deduped_total,
+                "links": link_count,
+                "references": reference_count,
                 "seconds_per_page": round(total / max(1, n_pages), 3),
                 "device": describe_device(),
                 "platform": f"{platform.system()} {platform.machine()}",
@@ -408,7 +439,7 @@ async def _process(doc_id: int) -> None:
 async def reindex_stale_documents() -> int:
     """Re-parse ready documents that have no vectors for the current embedding model.
 
-    Happens after SIGLIP_MODEL changes (or the vector store was wiped): their old vectors
+    Happens after SIGLIP_MODEL or TEXT_EMBED_MODEL changes (or the vector store was wiped): their old vectors
     are not comparable with new query vectors, so the documents are queued again.
     Collections belonging to previous embedding models are removed.
     """
@@ -429,8 +460,43 @@ async def reindex_stale_documents() -> int:
     for d in stale:
         await enqueue_parse(d.id)
     if stale:
-        log.info("re-indexing %d document(s) for embedding model %s", len(stale), settings.siglip_model)
+        log.info("re-indexing %d document(s) for the embedding models (%s)", len(stale), vector_store.collection_name())
     return len(stale)
+
+
+async def backfill_links() -> int:
+    """Read the links of documents parsed before link support existed (no re-parse needed).
+
+    Link extraction uses only PyMuPDF and the stored regions, so it takes milliseconds;
+    `parse_stats["links"]` marks a document as done.
+    """
+    from sqlalchemy import select
+
+    done = 0
+    async with SessionLocal() as s:
+        ready = (await s.execute(select(Document).where(Document.status == "ready"))).scalars().all()
+        todo = [d for d in ready if "links" not in (d.parse_stats or {})]
+    for d in todo:
+        pdf_path = settings.resolve_project_path(d.storage_path)
+        if not pdf_path.is_relative_to(settings.upload_dir) or not pdf_path.is_file():
+            continue
+        try:
+            async with SessionLocal() as s:
+                regions = (await s.execute(select(Region).where(Region.document_id == d.id))).scalars().all()
+                with pymupdf.open(pdf_path) as pdf:
+                    rows = links.build_link_rows(pdf, [{"id": r.id, "page": r.page, "type": r.type, "bbox": r.bbox,
+                                                        "content": r.content} for r in regions])
+                await s.execute(delete(Link).where(Link.document_id == d.id))
+                s.add_all(Link(document_id=d.id, **row) for row in rows)
+                doc = await s.get(Document, d.id)
+                n_links = sum(1 for row in rows if row["kind"] != "reference")
+                doc.parse_stats = {**(doc.parse_stats or {}), "links": n_links, "references": len(rows) - n_links}
+                await s.commit()
+            done += 1
+            log.info("doc %s: read %d links and %d reference entries", d.id, n_links, len(rows) - n_links)
+        except Exception:  # noqa: BLE001
+            log.exception("doc %s: reading links failed", d.id)
+    return done
 
 
 async def recover_interrupted_work() -> None:
@@ -490,6 +556,7 @@ async def main_async() -> None:
     try:
         await reindex_stale_documents()
         await recover_interrupted_work()
+        await backfill_links()
     except Exception:  # noqa: BLE001 - never block the worker from starting
         log.exception("start-up recovery failed")
     set_worker_status({"state": "idle"})

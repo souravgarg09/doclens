@@ -23,6 +23,23 @@ def region(region_id: int, values: list[float]) -> dict:
     }
 
 
+class CitationGapTests(unittest.TestCase):
+    def test_author_initials_do_not_end_a_sentence(self) -> None:
+        answer = "Reference [41] is the paper by K. Simonyan and A. Zisserman, published in ICLR in 2015. [R12]"
+        self.assertEqual([], uncited_factual_sentences(answer))
+
+    def test_citation_after_a_url_belongs_to_the_sentence(self) -> None:
+        answer = "The code is available at https://github.com/tensorflow/tensor2tensor. [R3415]"
+        self.assertEqual([], uncited_factual_sentences(answer))
+
+    def test_et_al_does_not_end_a_sentence(self) -> None:
+        self.assertEqual([], uncited_factual_sentences("Munn et al. compared one and three sets in their trial [R4]."))
+
+    def test_a_real_uncited_sentence_is_still_found(self) -> None:
+        gaps = uncited_factual_sentences("The first claim is cited here [R1]. The second claim has no citation at all.")
+        self.assertEqual(["The second claim has no citation at all."], gaps)
+
+
 class NumericVerifierTests(unittest.TestCase):
     def test_direct_structured_value_matches(self) -> None:
         result = verify("The reported accuracy is 91.5%. [R7]", [region(7, [91.5])])

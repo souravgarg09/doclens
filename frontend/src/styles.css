@@ -200,3 +200,19 @@ textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px #8b5cf61c; }
 .stats .enriching { border-color: var(--accent-2); color: var(--accent-2); animation: pulse 1.6s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: .55; } }
 @media (prefers-reduced-motion: reduce) { .stats .enriching { animation: none; } }
+
+/* PDF hyperlinks (citations, figure/table jumps, URLs) drawn over the page */
+.link-box { position: absolute; z-index: 3; padding: 0; border: 0; border-bottom: 2px solid; border-radius: 1px; background: transparent; cursor: pointer; }
+.link-box:hover, .link-box:focus-visible { background: color-mix(in srgb, var(--link) 22%, transparent); outline: 1px solid var(--link); }
+.link-box.inferred { border-bottom-style: dotted; }
+.link-flash { position: absolute; z-index: 4; pointer-events: none; border: 2px solid #fbbf24; border-radius: 3px; background: #fbbf2422; box-shadow: 0 0 18px #fbbf2466; animation: link-flash 2.4s ease-out forwards; }
+@keyframes link-flash { 0%, 60% { opacity: 1; } 100% { opacity: 0; } }
+.stats .links-chip { border-color: #fbbf24; color: #fbbf24; }
+.region-links { display: grid; gap: 6px; margin-top: 4px; }
+.region-links small { color: var(--muted); }
+.region-links ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: 220px; overflow: auto; }
+.link-row { display: flex; gap: 8px; width: 100%; padding: 6px 8px; text-align: left; font-size: 11px; line-height: 1.35; background: #060912aa; border: 1px solid var(--border); border-radius: 8px; }
+.link-row:hover { border-color: #fbbf2488; }
+.link-kind { flex: none; min-width: 44px; font: 700 10px ui-monospace, monospace; }
+.link-target { overflow-wrap: anywhere; color: #c9d5e6; }
+@media (prefers-reduced-motion: reduce) { .link-flash { animation: none; } }

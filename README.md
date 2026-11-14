@@ -4,7 +4,9 @@ DocLens answers questions about born-digital PDF documents — research papers, 
 **evidence you can click**. It splits every page into typed regions (text, tables, charts,
 equations), finds the regions relevant to a question, asks Gemini to answer *only* from those
 regions, highlights the cited regions on the page, and re-checks the numbers in the answer
-against the values extracted from the PDF.
+against the values extracted from the PDF. It also reads the PDF's **hidden links**: citation
+numbers that jump to the reference list, "see Table 2" jumps, and words linked to URLs or DOIs,
+so it can answer "which paper is reference 11?" and show where each citation points.
 
 B.Tech CSE major project, Amity University Punjab — Vidushi Chauhan, Anmol Sharma, Sourav Garg ·
 supervisor Dr. Vishwanath Bijalwan.
@@ -16,11 +18,13 @@ PDF upload ─▶ FastAPI stores it and queues a Redis job
                    ├─ tables   ─▶ Table Transformer ─▶ typed cells
                    ├─ charts   ─▶ DePlot            ─▶ data series  (background phase, after "ready")
                    └─ text     ─▶ PDF text layer
-                 SigLIP 2 embeddings ─▶ Qdrant · rows ─▶ PostgreSQL
+                 PDF link layer ─▶ citations, figure/table jumps, URLs/DOIs + numbered reference list
+                 arctic-embed-s (text) + SigLIP 2 (visual) vectors ─▶ Qdrant · rows ─▶ PostgreSQL
 Question   ─▶ LangGraph agent:
-                 hybrid retrieval (SigLIP vectors + BM25 keywords)
-               ─▶ rerank (similarity + keyword + structure priors; optional Gemini)
+                 hybrid retrieval (text vectors + BM25 keywords + small SigLIP vote for visuals)
+               ─▶ rerank (fused rank + type priors; calibrated relevance; optional Gemini)
                ─▶ context expansion (named tables/figures)
+               ─▶ link following ("reference 11", "see Table 2", each region's links shown to Gemini)
                ─▶ grounding guardrail ─▶ Gemini answer with [R id] citations
                ─▶ numeric verifier ─▶ one repair pass if a claim is unsupported
 ```
@@ -95,7 +99,12 @@ Logs are in `.runtime/logs/`.
    long each stage took.
 3. Ask a question (Enter). The answer cites regions like `R81`; click a citation to jump to and
    highlight that region on the page.
-4. Read the verification line: `consistent` means every number in the answer matched an
+4. **Links** (born-digital PDFs): underlines on the page mark the PDF's own links (yellow =
+   citation, blue = URL/DOI). Click one to jump to the reference entry or table it points to, or to
+   open the web address. Clicking a region lists its links. Questions like "Which paper is
+   reference 13?" or "Where is the code?" are answered from these links. For PDFs without a link
+   layer, citation markers such as "(11)" are matched to the numbered reference list (shown dotted).
+5. Read the verification line: `consistent` means every number in the answer matched an
    extracted value; `unverifiable`, `contradiction` and `citation_gap` need a human look.
    `Show processing trace` lists every agent step with its time.
 
@@ -133,7 +142,7 @@ Full reports are in `benchmarks/`.
 | Upload → chart values decoded (background) | included above | ~18 s |
 | Answer a question (median) | often minutes or no answer (Gemini model hung, 5× retry loops) | **5.8–11 s** across runs (fastest 2.2 s) |
 | Tables with real cell structure | 0 of 5 (Table Transformer crashed silently) | 5 of 5 |
-| Correct region among the 6 sent to Gemini (16-question test) | 8 of 16 (SigLIP + BM25) | 10 of 16 (SigLIP 2 + BM25) |
+| Correct region among the 6 sent to Gemini (16-question test) | 8 of 16 (SigLIP + BM25) | 13 of 16 (arctic-embed-s + BM25, 15 Nov) |
 
 Where parse time goes now: layout 2.4–4.6 s, embeddings ~1.5–2 s, tables ~1–2 s, everything else
 under 1 s; then chart decoding (DePlot, ~11 s for 4 charts) runs in the background while questions
@@ -148,6 +157,16 @@ switched from `gemini-3.8-flash` (no reply within 45 s) to Flash-Lite models (no
 hard timeouts, two tries per model, a fallback model and hedged requests; the extra Gemini rerank
 call replaced by local hybrid SigLIP + BM25 scoring.
 
+### Update, 15 November 2026: links, text search, chart decoding
+
+| Change | Before | After |
+|---|---|---|
+| Correct region in the top 6, 30 questions over 2 papers (sample + "Attention Is All You Need") | 15 / 30 (SigLIP 2 + BM25) | **26 / 30** (arctic-embed-s + BM25 + small SigLIP vote) |
+| Off-topic questions ("capital of France?") vs real ones, by the guardrail's score | not separable (SigLIP: off-topic up to 0.94, real from 0.89) | separable (arctic: real ≥ 0.587, off-topic ≤ 0.583) |
+| Hidden PDF links read | none | Attention: 113 links + 40 references · ResNet: 288 links + 50 references · sample (no link layer): 100 citations matched to 45 references. All 253 citation links checked: 0 wrong targets |
+| Reading the links | — | 0.5–0.8 s per paper |
+| Chart phase on papers with diagrams (Attention paper, 5 "charts") | 215 s (DePlot looped on diagrams to 512 tokens) | 28 s (junk output stopped early; diagrams kept as figures) |
+
 These numbers are for this laptop only. They say nothing about Apple Silicon; run the benchmark
 on the Mac to get its own numbers.
 
@@ -161,16 +180,14 @@ DocLens's own sample. Rule: take the newest version unless it breaks something o
 | Layout | DocLayout-YOLO DocStructBench **1280 (Jan 2025)** | newest weights; same regions as the 2024 weights with higher confidence and half the duplicate boxes, +65 ms/page |
 | Tables | Table Transformer v1.1-all | newest release (the repo is now archived); runs on transformers 5 with a config repair |
 | Charts | DePlot | no newer Google release; decoded in the background so it never delays "ready" |
-| Search | **SigLIP 2** base + BM25 keywords | newest SigLIP; 10/16 vs 8/16 correct regions in the top 6 on our retrieval test |
+| Search (text) | **Snowflake arctic-embed-s** + BM25 keywords | 26/30 correct regions in the top 6 vs 15/30 for SigLIP 2 + BM25; 33M parameters, Apache-2.0, no custom code. Compared: bge-small 23/30; arctic-embed-m-v2.0 (newer) needs remote code + xformers, so not used; EmbeddingGemma-300m is gated behind a licence click for every user |
+| Search (visual) | **SigLIP 2** base | ranks tables/charts/figures by how they look, with a small vote (0.25); an equal vote lowered results to 20/30 |
+| Links | PyMuPDF link layer + reference-list parser | no model; resolves citation, table, figure, section and footnote links, URLs and DOIs |
 | Answers | Gemini 3.1 Flash-Lite → 3.5 Flash-Lite → 3.6 Flash | 3.1 Flash-Lite measured fastest (1.8-3.5 s) with the most complete answers; both Lite models have their own 500/day free quota; 3.6 Flash (20/day, slow) is the last resort |
 | Runtime | torch 2.15 · transformers 5.22 · numpy 2.5 · PyMuPDF 2.1 | identical output to the old stack, chart decoding 12.2 s vs 18.1 s |
 
-Changing the embedding model is safe: each embedding model has its own vector collection and the
+Changing an embedding model is safe: each model combination has its own vector collection and the
 worker re-parses documents indexed with an old model automatically on start.
-
-Open decision: a dedicated text embedder (arctic-embed-s or bge-small) put the correct region in the
-top 6 for 13/16 questions, against 10/16 for SigLIP 2 + BM25. It is a different model, so it waits for
-the team's approval.
 
 ## Renaming the product or moving the folder
 
@@ -197,6 +214,8 @@ the team's approval.
 | `CUDA_FP16` | `true` | half-precision inference on NVIDIA GPUs |
 | `PRELOAD_MODELS` | `true` | load models when the worker starts instead of on the first upload |
 | `LEXICAL_WEIGHT` | `1.0` | weight of BM25 keyword ranking in hybrid retrieval (0 = vectors only) |
+| `TEXT_EMBED_MODEL` | `Snowflake/snowflake-arctic-embed-s` | text embedder for region contents; empty = SigLIP 2 + BM25 only |
+| `VISUAL_WEIGHT` | `0.25` | vote of SigLIP 2's ranking of tables/charts/figures in hybrid retrieval (0 = off) |
 | `TOP_K_RETRIEVE` / `TOP_K_CONTEXT` | `20` / `6` | candidates retrieved / regions sent to Gemini |
 | `GROUNDING_THRESHOLD` | `0.35` | below this the agent refuses instead of guessing |
 | `RENDER_DPI` | `144` | page render resolution |
@@ -219,6 +238,10 @@ npx tsc --noEmit -p . && npm run build
 
 - Built for born-digital English PDFs with ordinary tables and simple bar/line charts. Scanned
   PDFs (no text layer) are not supported.
+- Links come from the PDF's link layer. Author-year bibliographies ("Smith et al., 2019") without
+  links are not matched; numbered ones ("[11]", "(11)") are.
+- DePlot reads simple bar/line charts. On diagrams and dense training curves it often produces no
+  usable table; those stay figures that Gemini reads from the image.
 - Equation OCR (`pix2tex`) is optional and not installed by default; equations keep their PDF text.
 - The numeric verifier checks that numbers in the answer match extracted values or simple
   arithmetic on them. A `consistent` result does not prove the answer is correct in every

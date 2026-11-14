@@ -1,14 +1,21 @@
 """LangGraph orchestration of the question-answering agent.
 
-    parse ─▶ retrieve ─▶ rerank ─▶ expand ─▶ (guardrail) ─▶ answer ─▶ verify ─▶ END
-                                                 │                       │
-                                                 └─▶ refuse ─▶ END       └─▶ answer (repair, ≤ MAX_VERIFY_ATTEMPTS)
+    parse ─▶ retrieve ─▶ rerank ─▶ expand ─▶ links ─▶ (guardrail) ─▶ answer ─▶ verify ─▶ END
+                                                           │                       │
+                                                           └─▶ refuse ─▶ END       └─▶ answer (repair, ≤ MAX_VERIFY_ATTEMPTS)
 
 expand: makes sure the VLM actually sees the table/figure the question is about.
   1. Explicit label ("Figure 2", "Table 1") → look up that caption in Postgres, pull the
      structured regions from that page, matching type first.
   2. Otherwise, caption-like regions already in context → pull structured siblings from those pages.
   3. Otherwise, question names a table/figure but context has none → siblings from top pages.
+
+links: follows the PDF's own hyperlinks (see workers/parsers/links.py).
+  1. "reference 11" / "[11]" in the question → the reference-list entry and the passages citing it.
+  2. the question asks for code / a dataset / a website → regions holding URL/DOI links are added.
+  3. a context region links to a table/figure/equation ("see Table 2") → that region is added.
+  4. every context region is shown to the model with its links: citation → reference text,
+     words → URL/DOI, "Table 2" → caption.
 """
 from __future__ import annotations
 
@@ -21,8 +28,8 @@ from langgraph.graph import END, StateGraph
 from sqlalchemy import select
 
 from ..config import APP_NAME, settings
-from ..db import Document, Query, Region, SessionLocal
-from ..services import gemini
+from ..db import Document, Link, Query, Region, SessionLocal
+from ..services import gemini, lexical
 from ..services.gemini import GeminiUnavailable
 from ..services.reranker import rerank as rerank_regions
 from ..services.retriever import retrieve as retrieve_regions
@@ -94,6 +101,20 @@ _WORD_TYPES = {
 }
 
 _MAX_SIBLINGS = 6
+
+# "reference 11", "ref. [11]", "citation 11", "[11]", "bibliography entry 11"
+_REFERENCE_RE = re.compile(
+    r"\b(?:ref(?:erence)?s?|citations?|cited\s+(?:work|paper|study|article)|"
+    r"(?:reference|bibliography)\s+(?:entry|item|number))\.?\s*(?:no\.?|number|#)?\s*[\[(]?(\d{1,3})[\])]?"
+    r"|\[(\d{1,3})\]", re.I)
+# questions that ask for a web address: the regions holding URL/DOI links are added
+_WANTS_URL_RE = re.compile(
+    r"\b(code|source code|github|gitlab|repo(?:sitory)?|url|link|website|web ?site|homepage|download|"
+    r"available|doi|dataset|data set|implementation|demo|project page)\b", re.I)
+_MAX_URL_REGIONS = 2
+_MAX_LINK_FOLLOWS = 3
+_MAX_LINKS_PER_REGION = 10
+_LINK_GROUNDING = 0.6
 _LABEL_MATCH_GROUNDING = 0.6  # an exact caption hit is strong evidence
 
 
@@ -128,7 +149,7 @@ async def retrieve_node(state: AgentState) -> AgentState:
         cands = await retrieve_regions(s, state["document_id"], state["question"])
     keyword_hits = sum(1 for c in cands if c.get("lexical"))
     return {"candidates": cands, "trace": _t(state, "retrieve",
-                                             f"hybrid SigLIP+BM25 returned {len(cands)} candidates "
+                                             f"hybrid text+BM25+visual returned {len(cands)} candidates "
                                              f"({keyword_hits} with keyword matches)", t0)}
 
 
@@ -211,6 +232,116 @@ async def expand_node(state: AgentState) -> AgentState:
                         f"added {' '.join(added) if added else 'nothing'}", t0)}
 
 
+def _link_line(link: Link, region_page: dict[int, int]) -> str:
+    """One LINKS entry for the prompt: what the reader sees -> where it points."""
+    shown = (link.text or "").strip()[:40] or link.kind
+    if link.uri:
+        return f"'{shown}' -> {link.kind} {link.uri[:160]}"
+    target = re.sub(r"\s+", " ", link.target_text or "").strip()
+    where = f"p{link.target_page}" if link.target_page else ""
+    if link.target_region_id and link.target_region_id in region_page:
+        where += f", R{link.target_region_id}"
+    label = f"reference [{link.label}]" if link.kind == "citation" and link.label else link.kind
+    return f"'{shown}' -> {label}: {target[:170]} ({where})" if target else f"'{shown}' -> {label} ({where})"
+
+
+async def links_node(state: AgentState) -> AgentState:
+    t0 = time.time()
+    ctx = list(state.get("context") or [])
+    doc_id = state["document_id"]
+    grounding = float(state.get("grounding", 0.0))
+    have = {c["id"] for c in ctx}
+    notes: dict[int, list[str]] = {}
+    added: list[str] = []
+    how: list[str] = []
+
+    async with SessionLocal() as s:
+        rows = (await s.execute(select(Link).where(Link.document_id == doc_id))).scalars().all()
+        if not rows:
+            return {"trace": _t(state, "links", "this PDF has no embedded links or numbered reference list", t0)}
+        want: dict[int, str] = {}  # region id -> why it is added
+
+        # 1. "reference 11" in the question
+        numbers = [a or b for a, b in _REFERENCE_RE.findall(state["question"])]
+        for number in dict.fromkeys(numbers):
+            entry = next((r for r in rows if r.kind == "reference" and r.label == number), None)
+            citing = [r for r in rows if r.kind == "citation" and r.label == number]
+            text = entry.text if entry else next((r.target_text for r in citing if r.target_text), "")
+            holder = (entry.region_id if entry else None) or next(
+                (r.target_region_id for r in citing if r.target_region_id), None)
+            if not text or not holder:
+                how.append(f"reference [{number}] not found")
+                continue
+            want.setdefault(holder, f"reference [{number}]")
+            notes.setdefault(holder, []).append(f"REFERENCE [{number}] (from the reference list): {text}")
+            for r in citing[:2]:
+                if r.region_id:
+                    want.setdefault(r.region_id, f"cites [{number}]")
+            grounding = max(grounding, _LINK_GROUNDING)
+            how.append(f"reference [{number}] -> R{holder} + {min(2, len(citing))} citing passage(s)")
+
+        # 2. "where is the code?": regions whose words link to a URL / DOI, best keyword match first
+        if _WANTS_URL_RE.search(state["question"]):
+            q_terms = set(lexical.tokenize(state["question"]))
+            holders: dict[int, int] = {}
+            for r in rows:
+                if r.kind in ("url", "doi") and r.region_id:
+                    overlap = len(q_terms & set(lexical.tokenize(f"{r.text} {r.uri}")))
+                    holders[r.region_id] = max(holders.get(r.region_id, 0), overlap)
+            if holders:
+                texts = {rid: content for rid, content in (await s.execute(
+                    select(Region.id, Region.content).where(Region.id.in_(list(holders))))).all()}
+                for rid in holders:
+                    holders[rid] += len(q_terms & set(lexical.tokenize(texts.get(rid) or "")))
+                picked = [rid for rid in sorted(holders, key=holders.get, reverse=True)
+                          if holders[rid] > 0 and rid not in have][:_MAX_URL_REGIONS]
+                for rid in picked:
+                    want.setdefault(rid, "holds a URL/DOI link")
+                if picked:
+                    how.append(f"question asks for a web address -> {len(picked)} region(s) with URL/DOI links")
+
+        # 3. links from the context to tables / figures / equations
+        follows = 0
+        for r in rows:
+            if (r.region_id in have and r.kind in ("table", "figure", "equation") and r.target_region_id
+                    and r.target_region_id not in have and r.target_region_id not in want
+                    and follows < _MAX_LINK_FOLLOWS):
+                want[r.target_region_id] = f"link '{r.text}' from R{r.region_id}"
+                follows += 1
+
+        new_ids = [i for i in want if i not in have]
+        if new_ids:
+            for region in (await s.execute(select(Region).where(Region.id.in_(new_ids)))).scalars().all():
+                d = region.as_dict(include_paths=True)
+                d["rerank_score"] = 0.0
+                d["via"] = "link"
+                ctx.append(d)
+                have.add(region.id)
+                added.append(f"R{region.id}({want[region.id]})")
+
+    # 4. show every context region's own links
+    region_page = {c["id"]: c["page"] for c in ctx}
+    by_region: dict[int, list[Link]] = {}
+    for r in rows:
+        if r.kind != "reference" and r.region_id in have:
+            by_region.setdefault(r.region_id, []).append(r)
+    shown = 0
+    for c in ctx:
+        lines = list(notes.get(c["id"], []))
+        seen: set[str] = set()
+        for link in by_region.get(c["id"], []):
+            line = _link_line(link, region_page)
+            if line not in seen and len(seen) < _MAX_LINKS_PER_REGION:
+                seen.add(line)
+                lines.append(line)
+        if lines:
+            c["links"] = lines
+            shown += len(lines)
+    detail = "; ".join(how + ([f"followed {' '.join(added)}"] if added else [])) or "no reference or link to follow"
+    return {"context": ctx, "grounding": grounding,
+            "trace": _t(state, "links", f"{detail}; {shown} link line(s) shown to the model ({len(rows)} in the PDF)", t0)}
+
+
 async def refuse_node(state: AgentState) -> AgentState:
     t0 = time.time()
     g = state.get("grounding", 0.0)
@@ -227,7 +358,9 @@ SYSTEM = f"""You are {APP_NAME}, a document-intelligence reasoner. Answer ONLY f
 Tables, charts and equations are given BOTH as extracted text AND as images. If the extracted text is
 incomplete or garbled, READ THE IMAGE — it is the ground truth. Do not refuse if the value is visible in the image.
 Every factual sentence must end with citations like [R123] or [R123] [R456] using the region ids.
-Never combine multiple ids inside one bracket. When reading tables/charts,
+Never combine multiple ids inside one bracket. A region may list LINKS: the PDF's own hyperlinks
+inside it (a citation number -> the full reference entry, a word -> its URL or DOI, "Table 2" -> that
+table). Use them to say which work a citation refers to, citing the region that holds the link. When reading tables/charts,
 quote the exact cell/point values you use and show any arithmetic.
 Only if none of the regions (text or images) contain the answer, return {{"answer": "", "cited_region_ids": [], "confidence": 0}}.
 Return JSON: {{"answer": string, "cited_region_ids": number[], "confidence": number 0-1}}."""
@@ -258,6 +391,8 @@ def _build_parts(state: AgentState) -> tuple[list[Any], list[str]]:
                 + f"\nAXES: {s.get('axes')}")
         elif s.get("latex"):
             extra = f"\nLATEX: {s['latex']}"
+        if c.get("links"):
+            extra += "\nLINKS: " + " ; ".join(c["links"])
         content = c.get("content") or ""
         parts.append(f"[R{c['id']}] type={c['type']} page={c['page']} relevance={c.get('rerank_score')}\n{content[:1500]}{extra}")
         has_img = False
@@ -267,7 +402,8 @@ def _build_parts(state: AgentState) -> tuple[list[Any], list[str]]:
                 has_img = True
             except OSError:
                 pass
-        seen.append(f"R{c['id']}:{c['type']}@p{c['page']}({len(content)}ch{',img' if has_img else ''})")
+        seen.append(f"R{c['id']}:{c['type']}@p{c['page']}({len(content)}ch{',img' if has_img else ''}"
+                    f"{',' + str(len(c['links'])) + 'links' if c.get('links') else ''})")
     q = f"QUESTION: {state['question']}"
     if state.get("feedback"):
         q += f"\n\nVERIFIER FEEDBACK - correct the answer using only the cited evidence: {state['feedback']}"
@@ -360,6 +496,7 @@ def build_graph():
     g.add_node("retrieve", retrieve_node)
     g.add_node("rerank", rerank_node)
     g.add_node("expand", expand_node)
+    g.add_node("links", links_node)
     g.add_node("refuse", refuse_node)
     g.add_node("generate_answer", answer_node)
     g.add_node("verify", verify_node)
@@ -367,7 +504,8 @@ def build_graph():
     g.add_conditional_edges("parse", after_parse, {"retrieve": "retrieve", "refuse": "refuse"})
     g.add_edge("retrieve", "rerank")
     g.add_edge("rerank", "expand")
-    g.add_conditional_edges("expand", guardrail, {"answer": "generate_answer", "refuse": "refuse"})
+    g.add_edge("expand", "links")
+    g.add_conditional_edges("links", guardrail, {"answer": "generate_answer", "refuse": "refuse"})
     g.add_edge("generate_answer", "verify")
     g.add_conditional_edges("verify", after_verify, {"answer": "generate_answer", END: END})
     g.add_edge("refuse", END)

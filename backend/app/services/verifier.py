@@ -60,6 +60,26 @@ def normalize_region_citations(text: str) -> str:
     return _REGION_CITATION_GROUP_RE.sub(replace, text or "")
 
 
+# a period that does not end a sentence: initials ("K. He"), "et al.", "e.g.", "Fig.", "vol." ...
+_NO_BREAK_RE = re.compile(r"(?:(?<![A-Za-z])[A-Z]|(?<![A-Za-z])(?i:al|e\.g|i\.e|cf|vs|etc|fig|figs|eq|eqs|no|vol|pp|ch|sec|dr|mr|ms|jr|sr|st))\.$")
+_ONLY_CITATIONS_RE = re.compile(r"^(?:\[\s*R\d+(?:\s*[,;]\s*R?\d+)*\s*\]\s*)+[.!?]?$", re.I)
+
+
+def _sentences(block: str) -> list[str]:
+    """Split prose into sentences without breaking at initials/abbreviations, and keep a
+    citation that follows the full stop ("... github.com/x. [R3]") with its sentence."""
+    out: list[str] = []
+    for piece in re.split(r"(?<=[.!?])\s+", block):
+        piece = piece.strip()
+        if not piece:
+            continue
+        if out and (_NO_BREAK_RE.search(out[-1]) or _ONLY_CITATIONS_RE.match(piece)):
+            out[-1] = f"{out[-1]} {piece}"
+        else:
+            out.append(piece)
+    return out
+
+
 def uncited_factual_sentences(answer: str) -> list[str]:
     """Return prose claims that lack a trailing region citation.
 
@@ -77,8 +97,7 @@ def uncited_factual_sentences(answer: str) -> list[str]:
         if re.fullmatch(r"\*\*[^*]+\*\*", block) or re.fullmatch(r"__[^_]+__", block):
             continue
         block = re.sub(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)", "", block)
-        for sentence in re.split(r"(?<=[.!?])\s+", block):
-            sentence = sentence.strip()
+        for sentence in _sentences(block):
             if len(sentence.split()) < 4:
                 continue
             if not _REGION_CITATION_AT_END_RE.search(sentence):
@@ -222,6 +241,10 @@ def region_values(region: dict[str, Any]) -> list[tuple[float, str]]:
     if not vals:
         for _, v, _ in _numeric_claims(region.get("content", ""))[0]:
             vals.append((v, f"text of {region.get('type')} R{region.get('id')}"))
+    # values the model read from the region's PDF links (e.g. a reference entry's volume/pages)
+    for line in region.get("links") or []:
+        for _, v, _ in _numeric_claims(str(line))[0]:
+            vals.append((v, f"link in R{region.get('id')}"))
     return vals
 
 

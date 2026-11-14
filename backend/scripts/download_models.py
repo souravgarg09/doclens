@@ -36,6 +36,7 @@ def main() -> None:
     jobs = [
         ("layout (DocLayout-YOLO)", lambda: hf_hub_download(settings.layout_repo, settings.layout_weights)),
         ("embeddings (SigLIP)", lambda: _snapshot(settings.siglip_model)),
+        *([("text embeddings", lambda: _snapshot(settings.text_embed_model))] if settings.text_embed_model.strip() else []),
         ("tables (Table Transformer)", lambda: _snapshot(settings.table_model)),
         ("charts (DePlot)", lambda: _snapshot(settings.deplot_model)),
     ]
