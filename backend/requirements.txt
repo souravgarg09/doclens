@@ -1,5 +1,4 @@
-# Pinned versions, tested together on 12 Nov 2026 (Windows 11, GTX 1650).
-# Upgrade policy: take the newest version unless it breaks something or measures slower.
+# Pinned versions, tested together.
 # The torch build (CUDA / Apple MPS / CPU) is chosen by setup with `uv pip install --torch-backend=auto`.
 # ── API ──
 fastapi==0.162.5

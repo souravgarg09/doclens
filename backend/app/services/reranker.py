@@ -8,12 +8,11 @@
   in [0, 1] from the text-embedder cosine plus keyword overlap. The refusal guardrail compares
   grounding with settings.grounding_threshold (0.35).
 
-Calibration (arctic-embed-s, 30 on-topic and 8 off-topic questions over two papers): the best
-region scored cosine >= 0.587 for every on-topic question and <= 0.583 for off-topic ones
-("capital of France", "price of Bitcoin"). relevance = (cosine - 0.45) / 0.30 puts the 0.35
-threshold at cosine 0.555: most off-topic questions are refused without a Gemini call, and the
-model's own "not in the regions" refusal catches the rest. SigLIP's cosine could not tell the
-two apart (off-topic up to 0.94, on-topic from 0.89), so it is not used for grounding.
+Calibration: with arctic-embed-s, on-topic questions score a best-region cosine of about 0.59
+or more and off-topic ones about 0.58 or less. relevance = (cosine - 0.45) / 0.30 puts the 0.35
+threshold at cosine 0.555, so most off-topic questions are refused without a Gemini call; the
+model's own "not in the regions" refusal catches the rest. SigLIP's cosine does not separate the
+two, so it is not used for grounding.
 """
 from typing import Any
 

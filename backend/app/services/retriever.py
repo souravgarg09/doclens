@@ -7,9 +7,8 @@
    look, with a small weight (`visual_weight`), so a chart with little text can still be found.
 4. The rankings are fused with reciprocal-rank fusion; the top `top_k_retrieve` are kept.
 
-Measured on 30 questions over two papers (sample meta-analysis + "Attention Is All You Need"):
-the correct region was in the top 6 for 26/30 with arctic-s + BM25, against 15/30 for the
-previous SigLIP 2 + BM25. SigLIP with an equal vote pulled results down to 20/30.
+Text vectors + BM25 rank paragraphs far better than SigLIP alone; SigLIP keeps a small vote
+because a larger one pulls text results down.
 
 Each candidate keeps `score` = text-embedder cosine (the reranker's relevance and the grounding
 guardrail are calibrated on it), plus `visual`, `lexical` and `fused` for the trace.

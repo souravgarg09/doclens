@@ -36,10 +36,8 @@ _RETRY_STATUS = {500, 502, 503, 504}
 _TRANSIENT_ERROR_WORDS = ("timeout", "timed out", "connection", "remote protocol", "temporarily")
 _POOL = ThreadPoolExecutor(max_workers=16, thread_name_prefix="gemini")  # abandoned slow requests finish here
 
-# Model health: Gemini models get slow or unavailable at different times (measured the same
-# evening: 3.5-flash answering in 2-7 s while flash-lite took 20-50 s, and later the reverse
-# with 3.5-flash timing out). A model that timed out or failed recently is not used as the
-# hedged backup for a while.
+# Model health: Gemini models get slow or unavailable at different times. A model that timed
+# out or failed recently is not used as the hedged backup for a while.
 _UNHEALTHY_FOR_S = 300.0
 _last_failure: dict[str, float] = {}
 

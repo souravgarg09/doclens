@@ -34,8 +34,8 @@ USE_FP16 = (DEVICE.type == "cuda" and settings.cuda_fp16
 
 if DEVICE.type == "cuda":
     # Let cuDNN benchmark convolution algorithms once per input shape and keep the fastest.
-    # Measured on a GTX 1650: layout detection 4.6 s → 0.15 s per page. Page renders share
-    # one size, so the one-off tuning cost is paid only on the first page.
+    # Page renders share one size, so the one-off tuning cost is paid only on the first page
+    # and layout detection becomes many times faster afterwards.
     torch.backends.cudnn.benchmark = True
 
 if DEVICE.type == "cpu":

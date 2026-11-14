@@ -25,3 +25,6 @@ Thumbs.db
 # copyrighted papers and private documents stay local
 samples/*.pdf
 Documents/
+
+# benchmark run reports are machine-specific
+benchmarks/

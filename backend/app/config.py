@@ -57,13 +57,8 @@ class Settings(BaseSettings):
 
     # Gemini
     gemini_api_key: str = ""
-    # Chosen by measurement on DocLens's benchmark (13 Nov 2026, same questions, each model as primary):
-    #   3.1 Flash-Lite: 1.8-3.5 s per call, 5/6 answers clean, fuller table answers  -> primary
-    #   3.5 Flash-Lite: 2.5-6.8 s per call, 4/6 clean, terser answers                -> first fallback
-    #   3.6 Flash: 7-35 s and only 20 requests/day on the free tier                 -> last resort
-    # Both Flash-Lite models have their own free-tier quota (15/min, 500/day each). "gemini-3.5-flash"
-    # has no quota row of its own and 3.8 Flash stalled, so neither is used. A model that returns
-    # "not found" (retired) or 429 (quota used up) is skipped automatically.
+    # Primary model, then fallbacks tried in order. Flash-Lite models are fast and each has its own
+    # free-tier quota; a model that returns "not found" (retired) or 429 (quota used up) is skipped.
     gemini_model: str = "gemini-3.1-flash-lite"
     gemini_fallback_model: str = "gemini-3.5-flash-lite,gemini-3.6-flash"
     # thinking level sent to the model ("minimal", "low", "medium", "high"; empty = model default)
@@ -91,19 +86,14 @@ class Settings(BaseSettings):
     api_embed_on_cpu: bool = True
 
     # AI models
-    # DocLayout-YOLO DocStructBench weights, Jan 2025 release trained at 1280 px. On the sample
-    # paper it found the same tables/charts/equations as the Oct 2024 1024-px weights with higher
-    # confidence and half the duplicate boxes, for +65 ms per page.
+    # DocLayout-YOLO DocStructBench weights trained at 1280 px.
     layout_repo: str = "juliozhao/DocLayout-YOLO-DocStructBench-imgsz1280-2501"
     layout_weights: str = "doclayout_yolo_docstructbench_imgsz1280_2501.pt"
     layout_imgsz: int = 1280
-    # SigLIP 2 (Feb 2025): same size and API as SigLIP; 10/16 vs 8/16 correct regions in the
-    # top 6 on our retrieval test (hybrid with BM25).
+    # SigLIP 2: image + short-text embeddings, used to rank tables, charts and figures by appearance.
     siglip_model: str = "google/siglip2-base-patch16-224"
-    # Text embedder for what a region SAYS (SigLIP reads only 64 tokens and is weak on
-    # paragraphs). Snowflake arctic-embed-s: 33M parameters, 512 tokens, Apache-2.0, no custom
-    # code. Retrieval is SigLIP 2 (looks) + this (says) + BM25 (exact words), rank-fused.
-    # Empty = SigLIP 2 + BM25 only.
+    # Text embedder for what a region says (512 tokens; SigLIP reads only 64). Retrieval fuses
+    # this, BM25 keywords and SigLIP 2 for visuals. Empty = SigLIP 2 + BM25 only.
     text_embed_model: str = "Snowflake/snowflake-arctic-embed-s"
     text_query_prefix: str = "Represent this sentence for searching relevant passages: "
     table_model: str = (

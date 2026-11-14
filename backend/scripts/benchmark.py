@@ -33,8 +33,8 @@ from typing import Any
 import httpx
 
 ROOT = Path(__file__).resolve().parents[2]
-# samples/ is git-ignored (papers are copyrighted): put your own PDF there. The default questions
-# were written for the meta-analysis used during development; pass -q for other papers.
+# PDFs in samples/ are not committed: put your own there or pass --pdf. The default questions
+# suit a meta-analysis paper; pass -q "..." for other documents.
 DEFAULT_PDF = ROOT / "samples" / "muscle-hypertrophy-meta-analysis.pdf"
 
 
