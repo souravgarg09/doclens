@@ -47,12 +47,12 @@ DocLens/
 │   └── tests/          unit tests
 ├── frontend/           React + Vite + TypeScript interface
 ├── scripts/windows/    PowerShell scripts behind the .cmd launchers
-├── samples/            demonstration PDF
-├── benchmarks/         benchmark reports (one .md + .json per run)
-└── Documents/          Midterm/, Endterm/, University formats/
+├── samples/            put your own demo PDFs here (git-ignored; see samples/README.md)
+└── benchmarks/         benchmark reports (one .md + .json per run)
 
 Created at run time and never committed: .env (your key), backend/.venv, frontend/node_modules,
-data/ (uploads, page images, crops), .runtime/ (logs).
+data/ (uploads, page images, crops), .runtime/ (logs). Also kept out of git: PDFs in samples/
+(research papers are copyrighted) and the team's Documents/ folder (reports, university formats).
 ```
 
 ## Requirements
@@ -119,7 +119,7 @@ With DocLens running, from `backend/`:
 .venv/bin/python -m scripts.benchmark
 ```
 
-It uploads the sample PDF three times, asks three questions per run, and writes
+It uploads a PDF from `samples/` (add one first, or pass `--pdf`) three times, asks three questions per run, and writes
 `benchmarks/<date>_<computer>.md` and `.json` with the machine, the device (CUDA/MPS/CPU),
 upload-to-ready time, per-stage parse timings, per-step question timings and any Gemini quota
 errors. Use `--no-questions` to measure parsing without spending Gemini quota, `--runs N` for

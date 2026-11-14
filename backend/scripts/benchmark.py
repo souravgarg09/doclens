@@ -33,7 +33,16 @@ from typing import Any
 import httpx
 
 ROOT = Path(__file__).resolve().parents[2]
+# samples/ is git-ignored (papers are copyrighted): put your own PDF there. The default questions
+# were written for the meta-analysis used during development; pass -q for other papers.
 DEFAULT_PDF = ROOT / "samples" / "muscle-hypertrophy-meta-analysis.pdf"
+
+
+def _default_pdf() -> Path:
+    if DEFAULT_PDF.is_file():
+        return DEFAULT_PDF
+    found = sorted((ROOT / "samples").glob("*.pdf"))
+    return found[0] if found else DEFAULT_PDF
 DEFAULT_QUESTIONS = [
     "How many studies were included in the meta-analysis?",
     "What was the effect size difference between multiple sets and single sets for hypertrophy?",
@@ -153,7 +162,7 @@ def to_markdown(report: dict[str, Any]) -> str:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--api", default="http://127.0.0.1:8000")
-    ap.add_argument("--pdf", type=Path, default=DEFAULT_PDF)
+    ap.add_argument("--pdf", type=Path, default=None, help="PDF to upload (default: a PDF in samples/)")
     ap.add_argument("--runs", type=int, default=3)
     ap.add_argument("-q", "--question", action="append", dest="questions")
     ap.add_argument("--no-questions", action="store_true", help="only measure parsing (no Gemini calls)")
@@ -161,6 +170,9 @@ def main() -> None:
     ap.add_argument("--timeout", type=float, default=3600)
     ap.add_argument("--out", type=Path, default=ROOT / "benchmarks")
     args = ap.parse_args()
+    args.pdf = args.pdf or _default_pdf()
+    if not args.pdf.is_file():
+        raise SystemExit(f"No PDF to benchmark: put a born-digital PDF in {ROOT / 'samples'} or pass --pdf <file>.")
     questions = [] if args.no_questions else (args.questions or DEFAULT_QUESTIONS)
 
     with httpx.Client(base_url=args.api, timeout=60) as client:
